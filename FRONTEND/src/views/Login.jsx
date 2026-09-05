@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import axios from 'axios'
 
-export default function Login({ setToken, setUsuario }) {
+export default function Login({ setToken, setUsuario, onVoltarLanding }) {
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
@@ -43,13 +43,28 @@ export default function Login({ setToken, setUsuario }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 font-sans">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 p-8 rounded-[2rem] shadow-2xl animate-fade-in">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 font-sans relative overflow-hidden">
+      {/* Glow de fundo */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] bg-blue-600/10 blur-[120px] pointer-events-none rounded-full" />
+
+      <div className="w-full max-w-md bg-slate-900/90 border border-slate-800 p-8 rounded-[2rem] shadow-2xl animate-fade-in relative z-10 backdrop-blur-xl">
         
+        {onVoltarLanding && (
+          <button 
+            type="button" 
+            onClick={onVoltarLanding} 
+            className="mb-6 text-xs text-slate-400 hover:text-white font-bold transition-colors flex items-center gap-1.5"
+          >
+            ← Voltar ao site institucional
+          </button>
+        )}
+
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-black text-blue-500 tracking-tighter italic mb-2">SGM.PRO</h1>
-          <p className="text-slate-500 font-medium">
-            {modoRecuperacao ? 'Recuperação de Acesso' : 'Painel de Gestão e Operações'}
+          <h1 className="text-4xl font-black text-white tracking-tighter italic mb-2">
+            SGM<span className="text-blue-500">.PRO</span>
+          </h1>
+          <p className="text-slate-400 text-xs font-medium">
+            {modoRecuperacao ? 'Recuperação de Acesso' : 'Painel Integrado de Gestão & Operações'}
           </p>
         </div>
 
@@ -59,11 +74,11 @@ export default function Login({ setToken, setUsuario }) {
         {!modoRecuperacao ? (
           <form onSubmit={fazerLogin} className="space-y-5">
             <div>
-              <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2 ml-1">E-mail de Acesso</label>
+              <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2 ml-1">E-mail de Acesso</label>
               <input required type="email" placeholder="seu@email.com" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white outline-none focus:border-blue-500 transition-colors" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div>
-              <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2 ml-1">Senha Segura</label>
+              <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2 ml-1">Senha Segura</label>
               <input required type="password" placeholder="••••••••" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white outline-none focus:border-blue-500 transition-colors" value={senha} onChange={(e) => setSenha(e.target.value)} />
             </div>
             
@@ -71,14 +86,16 @@ export default function Login({ setToken, setUsuario }) {
               {loading ? 'Autenticando...' : 'Entrar no Sistema'}
             </button>
 
-            <button type="button" onClick={() => {setModoRecuperacao(true); setErro(''); setMsgRecuperacao('')}} className="w-full text-sm text-slate-500 hover:text-blue-400 font-medium transition-colors mt-4">
-              Esqueci minha senha / Primeiro Acesso
-            </button>
+            <div className="flex flex-col gap-2 text-center mt-4">
+              <button type="button" onClick={() => {setModoRecuperacao(true); setErro(''); setMsgRecuperacao('')}} className="text-xs text-slate-500 hover:text-blue-400 font-medium transition-colors">
+                Esqueci minha senha / Primeiro Acesso
+              </button>
+            </div>
           </form>
         ) : (
           <form onSubmit={solicitarRecuperacao} className="space-y-5">
             <div>
-              <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2 ml-1">Digite seu E-mail cadastrado</label>
+              <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2 ml-1">Digite seu E-mail cadastrado</label>
               <input required type="email" placeholder="seu@email.com" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white outline-none focus:border-blue-500 transition-colors" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             
@@ -86,7 +103,7 @@ export default function Login({ setToken, setUsuario }) {
               {loading ? 'Enviando...' : 'Receber Link de Troca'}
             </button>
 
-            <button type="button" onClick={() => {setModoRecuperacao(false); setErro(''); setMsgRecuperacao('')}} className="w-full text-sm text-slate-500 hover:text-slate-300 font-medium transition-colors mt-4">
+            <button type="button" onClick={() => {setModoRecuperacao(false); setErro(''); setMsgRecuperacao('')}} className="w-full text-xs text-slate-400 hover:text-white font-medium transition-colors mt-4">
               Voltar para o Login
             </button>
           </form>
