@@ -33,7 +33,7 @@ jobs:
           fi
 
           echo "🐳 Atualizando e recriando containers Docker..."
-          docker compose down || true
+          docker compose down -t 2 || true
           docker compose up -d --build --force-recreate
 
           echo "⏳ Aguardando estabilização dos serviços..."
