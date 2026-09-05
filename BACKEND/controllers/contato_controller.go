@@ -81,8 +81,11 @@ func EnviarContato(c *fiber.Ctx) error {
 	}
 	whatsappURL := fmt.Sprintf("https://wa.me/%s?text=%s", whatsappNumero, url.QueryEscape(textoWA))
 
-	// 3. Disparo assíncrono do e-mail com fallback (Resend API HTTPS + SMTP)
+	// 3. Disparo assíncrono dos e-mails com fallback
+	// a) Notificação para a equipe interna / administradores do SGM.PRO
 	go dispararEmailContato(payload, lead.ID)
+	// b) Confirmação automática para o cliente que enviou o formulário
+	go dispararConfirmacaoCliente(payload, lead.ID)
 
 	return c.Status(200).JSON(fiber.Map{
 		"sucesso":      true,
@@ -301,3 +304,155 @@ func dispararEmailContato(p ContatoPayload, leadID uint) {
 		logMsg("ℹ️ [SGM.PRO LEAD REGISTRADO NO BANCO] Nome: %s | Empresa: %s | Tel: %s | Email: %s", p.Nome, p.Empresa, p.Telefone, p.Email)
 	}
 }
+
+func dispararConfirmacaoCliente(p ContatoPayload, leadID uint) {
+	logMsg := func(formato string, v ...interface{}) {
+		txt := fmt.Sprintf("[%s] "+formato, append([]interface{}{time.Now().Format("2006-01-02 15:04:05")}, v...)...)
+		fmt.Println(txt)
+		log.Println(txt)
+		if f, err := os.OpenFile("contato.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			f.WriteString(txt + "\n")
+			f.Close()
+		}
+	}
+
+	if p.Email == "" {
+		return
+	}
+
+	logMsg("📨 [AUTO-RESPOSTA CLIENTE] Enviando confirmação para o cliente: %s (%s)", p.Nome, p.Email)
+
+	assunto := "Recebemos seu contato com sucesso! • SGM.PRO"
+
+	corpoTxt := fmt.Sprintf("Olá, %s!\n\nAgradecemos o seu contato com o SGM.PRO.\n\nRecebemos suas informações com sucesso (Protocolo #%d) e nossa equipe comercial já está analisando seus dados para agendar uma apresentação e tirar todas as suas dúvidas.\n\nDados registrados:\n• Nome: %s\n• Empresa/Perfil: %s\n• Telefone: %s\n• Cidade/UF: %s\n\nCaso prefira atendimento imediato, você pode falar conosco pelo WhatsApp: +55 (11) 97298-0409\n\nAtenciosamente,\nEquipe SGM.PRO — Plataforma de Medição Técnica Terceirizada\nhttps://sgmpro.com.br",
+		p.Nome, leadID, p.Nome, p.Empresa, p.Telefone, p.Cidade)
+
+	corpoHTML := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
+    .card { max-width: 600px; margin: 0 auto; background: #1e293b; border: 1px solid #334155; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); }
+    .header { background: linear-gradient(135deg, #1d4ed8, #0284c7); padding: 30px 24px; text-align: center; }
+    .header h1 { margin: 0; font-size: 22px; font-weight: 900; color: #ffffff; }
+    .header p { margin: 8px 0 0 0; font-size: 13px; color: #e0f2fe; }
+    .content { padding: 28px 24px; }
+    .greeting { font-size: 17px; font-weight: 700; color: #ffffff; margin-bottom: 12px; }
+    .text { font-size: 14px; line-height: 1.6; color: #cbd5e1; margin-bottom: 20px; }
+    .box { background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 16px; margin-bottom: 22px; }
+    .box-title { font-size: 11px; font-weight: 800; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+    .box-item { font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
+    .box-item strong { color: #f1f5f9; }
+    .btn-wa { display: block; text-align: center; background: #10b981; color: #ffffff !important; text-decoration: none; padding: 14px 20px; border-radius: 12px; font-weight: 800; font-size: 14px; margin-top: 24px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+    .footer { background: #0f172a; padding: 18px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #334155; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>🚀 Olá, %s!</h1>
+      <p>Recebemos sua solicitação de contato no SGM.PRO</p>
+    </div>
+    <div class="content">
+      <div class="greeting">Tudo certo com a sua mensagem!</div>
+      <div class="text">
+        Agradecemos pelo seu interesse na maior rede inteligente de medição técnica terceirizada para lojas de planejados e marcenarias.<br><br>
+        Nossa equipe técnica e comercial já recebeu os seus dados (Protocolo <strong>#%d</strong>) e entrará em contato em breve para apresentar a melhor solução para sua operação.
+      </div>
+      <div class="box">
+        <div class="box-title">Resumo das Informações Registradas:</div>
+        <div class="box-item">• <strong>Nome:</strong> %s</div>
+        <div class="box-item">• <strong>Empresa / Perfil:</strong> %s</div>
+        <div class="box-item">• <strong>Telefone:</strong> %s</div>
+        <div class="box-item">• <strong>Cidade / UF:</strong> %s</div>
+      </div>
+      <div class="text">
+        Se preferir falar conosco agora mesmo, clique no botão abaixo para iniciar uma conversa no WhatsApp:
+      </div>
+      <a href="https://wa.me/5511972980409?text=Ol%C3%A1+Marcelo%2C+acabei+de+enviar+meu+contato+pelo+site+do+SGM.PRO+e+gostaria+de+atendimento." class="btn-wa">
+        💬 Conversar pelo WhatsApp
+      </a>
+    </div>
+    <div class="footer">
+      SGM.PRO • Plataforma Oficial de Gestão e Medição Técnica Terceirizada<br>
+      Este é um e-mail automático de confirmação de recebimento.
+    </div>
+  </div>
+</body>
+</html>`, p.Nome, leadID, p.Nome, p.Empresa, p.Telefone, p.Cidade)
+
+	// 1. Tenta envio pelo Resend
+	rawResendKey := os.Getenv("RESEND_API_KEY")
+	resendKey := strings.Trim(strings.TrimSpace(rawResendKey), "\"'")
+	enviado := false
+
+	if resendKey != "" {
+		resendFrom := strings.Trim(strings.TrimSpace(os.Getenv("RESEND_FROM_EMAIL")), "\"'")
+		if resendFrom == "" {
+			resendFrom = "SGM.PRO <onboarding@resend.dev>"
+		}
+
+		payloadResend := map[string]interface{}{
+			"from":    resendFrom,
+			"to":      []string{p.Email},
+			"subject": assunto,
+			"html":    corpoHTML,
+			"text":    corpoTxt,
+		}
+
+		bodyBytes, _ := json.Marshal(payloadResend)
+		reqHttp, errReq := http.NewRequest("POST", "https://api.resend.com/emails", bytes.NewBuffer(bodyBytes))
+		if errReq == nil {
+			reqHttp.Header.Set("Authorization", "Bearer "+resendKey)
+			reqHttp.Header.Set("Content-Type", "application/json")
+			client := &http.Client{Timeout: 10 * time.Second}
+			respHttp, errResp := client.Do(reqHttp)
+			if errResp == nil {
+				respBytes, _ := io.ReadAll(respHttp.Body)
+				respHttp.Body.Close()
+
+				if respHttp.StatusCode == 200 || respHttp.StatusCode == 201 {
+					logMsg("✅ [AUTO-RESPOSTA] E-mail entregue com sucesso para o cliente %s via Resend! (ID: %s)", p.Email, string(respBytes))
+					enviado = true
+				} else if respHttp.StatusCode == 403 {
+					logMsg("⚠️ [AUTO-RESPOSTA RESEND 403] O Resend Sandbox não permite enviar para destinatários externos (%s) sem domínio verificado. Resposta: %s", p.Email, string(respBytes))
+				} else {
+					logMsg("❌ [AUTO-RESPOSTA RESEND] HTTP %d: %s", respHttp.StatusCode, string(respBytes))
+				}
+			}
+		}
+	}
+
+	// 2. Tenta Fallback pelo SMTP Gmail (que permite enviar para qualquer e-mail quando autenticado)
+	if !enviado {
+		smtpHost := strings.Trim(strings.TrimSpace(os.Getenv("EMAIL_HOST")), "\"'")
+		smtpPort := strings.Trim(strings.TrimSpace(os.Getenv("EMAIL_PORT")), "\"'")
+		smtpUser := strings.Trim(strings.TrimSpace(os.Getenv("EMAIL_HOST_USER")), "\"'")
+		smtpPass := strings.Trim(strings.TrimSpace(os.Getenv("EMAIL_HOST_PASSWORD")), "\"'")
+		smtpPass = strings.ReplaceAll(smtpPass, " ", "")
+
+		if smtpHost != "" && smtpPort != "" && smtpUser != "" && smtpPass != "" {
+			fromEmail := strings.Trim(strings.TrimSpace(os.Getenv("DEFAULT_FROM_EMAIL")), "\"'")
+			if fromEmail == "" {
+				fromEmail = smtpUser
+			}
+			msg := []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
+				fromEmail, p.Email, assunto, corpoHTML))
+
+			auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+			addr := fmt.Sprintf("%s:%s", smtpHost, smtpPort)
+			if errSmtp := smtp.SendMail(addr, auth, fromEmail, []string{p.Email}, msg); errSmtp == nil {
+				logMsg("✅ [AUTO-RESPOSTA] E-mail de confirmação enviado para o cliente %s via SMTP Gmail!", p.Email)
+				enviado = true
+			} else {
+				logMsg("⚠️ [AUTO-RESPOSTA SMTP] Falha no envio via SMTP Gmail para %s: %v", p.Email, errSmtp)
+			}
+		}
+	}
+
+	if !enviado {
+		logMsg("ℹ️ [AUTO-RESPOSTA PENDENTE] Para enviar confirmação direta aos clientes em qualquer domínio, é necessário verificar um domínio próprio no Resend ou ativar a Senha de App no Gmail.")
+	}
+}
+
