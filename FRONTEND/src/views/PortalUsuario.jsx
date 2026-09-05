@@ -375,6 +375,7 @@ function RadarMapaInterativo({
           </button>
         </div>
 
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800">
             <span className="text-[10px] text-slate-500 uppercase font-black">Mapa:</span>
             <select
