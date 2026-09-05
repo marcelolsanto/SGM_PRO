@@ -13,6 +13,7 @@ func RegisterOsRoutes(api fiber.Router) {
 	api.Put("/os/:id", controllers.AtualizarOrdem)
 	api.Put("/os/:id/status", controllers.AtualizarStatus)
 	api.Put("/os/:id/pegar-demanda", controllers.PegarDemanda)
+	api.Put("/os/:id/recusar-demanda", controllers.RecusarDemanda)
 	api.Put("/os/:id/cheguei", controllers.MarcarChegada)
 	api.Put("/os/:id/entregar", controllers.EntregarMedicao)
 	api.Delete("/os/:id", controllers.DeletarOrdem)

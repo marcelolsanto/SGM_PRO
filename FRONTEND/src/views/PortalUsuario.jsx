@@ -35,6 +35,9 @@ function RadarMapaInterativo({
   const mapInstanceRef = useRef(null);
   const markersGroupRef = useRef(null);
   const routeLineRef = useRef(null);
+  const tileLayerRef = useRef(null);
+
+  const [tipoMapa, setTipoMapa] = useState('google_streets');
 
   const [posicaoMedidor, setPosicaoMedidor] = useState({
     lat: medidor?.latitude && Number(medidor.latitude) !== 0 ? Number(medidor.latitude) : -23.550520,
@@ -78,12 +81,6 @@ function RadarMapaInterativo({
         zoomControl: false
       });
 
-      window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        subdomains: 'abcd',
-        maxZoom: 19
-      }).addTo(map);
-
       window.L.control.zoom({ position: 'bottomright' }).addTo(map);
 
       markersGroupRef.current = window.L.layerGroup().addTo(map);
@@ -97,6 +94,37 @@ function RadarMapaInterativo({
       }
     };
   }, []);
+
+  // 2.1 Camadas do Mapa (Google Maps Ruas, Google Maps Satélite e Dark Mode)
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !window.L) return;
+
+    if (tileLayerRef.current) {
+      map.removeLayer(tileLayerRef.current);
+    }
+
+    let url = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+    let options = {
+      maxZoom: 20,
+      subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+      attribution: '&copy; Google Maps'
+    };
+
+    if (tipoMapa === 'google_sat') {
+      url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+      options.attribution = '&copy; Google Maps Satélite';
+    } else if (tipoMapa === 'dark') {
+      url = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+      options = {
+        maxZoom: 19,
+        subdomains: 'abcd',
+        attribution: '&copy; OpenStreetMap &copy; CARTO'
+      };
+    }
+
+    tileLayerRef.current = window.L.tileLayer(url, options).addTo(map);
+  }, [tipoMapa]);
 
   // 3. Atualização de Marcadores e Traçado de Rotas
   useEffect(() => {
@@ -206,6 +234,9 @@ function RadarMapaInterativo({
               <div style="font-size: 10px; color: #64748b; margin-top: 2px;">
                 🚗 ${dist} km da sua posição
               </div>
+              <a href="https://www.google.com/maps/dir/?api=1&origin=${posicaoMedidor.lat},${posicaoMedidor.lon}&destination=${lat},${lon}" target="_blank" rel="noreferrer" style="display: block; text-align: center; background: #2563eb; color: white; padding: 6px; border-radius: 6px; text-decoration: none; font-size: 10px; font-weight: bold; margin-top: 6px;">
+                🗺️ Navegar no Google Maps
+              </a>
             </div>
           `);
         bounds.push([lat, lon]);
@@ -218,13 +249,15 @@ function RadarMapaInterativo({
         const lat = Number(os.latitude_obra) || -23.185700;
         const lon = Number(os.longitude_obra) || -46.897800;
         const dist = calcularDistanciaKm(posicaoMedidor.lat, posicaoMedidor.lon, lat, lon);
+        const isPago = os.status_pagamento === 'PAGO';
+        const isAgendado = Boolean(os.data_agendada && os.hora_agendada) || Boolean(os.termos_aceitos);
 
         if (filtroRaio > 0 && dist > filtroRaio) return;
 
         const iconeDemanda = L.divIcon({
           className: 'custom-demanda-icon',
           html: `
-            <div style="width: 32px; height: 32px; background: #f59e0b; border: 2px solid #ffffff; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 15px; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5); cursor: pointer;">
+            <div style="width: 32px; height: 32px; background: ${isPago && isAgendado ? '#10b981' : '#f59e0b'}; border: 2px solid #ffffff; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 15px; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5); cursor: pointer;">
               📐
             </div>
           `,
@@ -238,9 +271,12 @@ function RadarMapaInterativo({
             <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 200px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <strong style="color: #b45309; font-size: 13px;">${os.cliente_nome}</strong>
-                <span style="background: #fef3c7; color: #b45309; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px;">DISPONÍVEL</span>
+                <span style="background: ${isPago && isAgendado ? '#d1fae5' : '#fef3c7'}; color: ${isPago && isAgendado ? '#065f46' : '#b45309'}; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px;">
+                  ${isPago && isAgendado ? 'PAGA E AGENDADA' : 'EM AGENDAMENTO'}
+                </span>
               </div>
               <span style="color: #64748b; font-size: 11px;">📍 ${os.endereco_obra}</span>
+              ${os.data_agendada ? `<div style="color: #1e40af; font-size: 10px; font-weight: bold; margin-top: 3px;">📅 Agendado: ${os.data_agendada} às ${os.hora_agendada}</div>` : ''}
               <div style="background: #f8fafc; border-radius: 8px; padding: 6px; margin: 6px 0; border: 1px solid #e2e8f0;">
                 <div style="display: flex; justify-content: space-between; font-size: 11px;">
                   <span>Distância até você:</span>
@@ -251,9 +287,18 @@ function RadarMapaInterativo({
                   <strong style="color: #16a34a; font-size: 13px;">${formatarMoeda(os.custo_medidor)}</strong>
                 </div>
               </div>
-              <button id="btn-aceitar-mapa-${os.id}" style="width: 100%; background: #f59e0b; color: #0f172a; border: none; padding: 8px; border-radius: 8px; font-weight: 900; font-size: 11px; cursor: pointer; text-transform: uppercase;">
-                ✋ Aceitar Medição Agora
-              </button>
+              ${isPago && isAgendado ? `
+                <button id="btn-aceitar-mapa-${os.id}" style="width: 100%; background: #10b981; color: #ffffff; border: none; padding: 8px; border-radius: 8px; font-weight: 900; font-size: 11px; cursor: pointer; text-transform: uppercase;">
+                  ✅ Confirmar Medição
+                </button>
+              ` : `
+                <div style="width: 100%; background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; padding: 6px; border-radius: 8px; font-weight: 700; font-size: 10px; text-align: center;">
+                  ${!isPago ? '⏳ Aguardando Pagamento' : '⏳ Aguardando Agendamento'}
+                </div>
+              `}
+              <a href="https://www.google.com/maps/dir/?api=1&origin=${posicaoMedidor.lat},${posicaoMedidor.lon}&destination=${lat},${lon}" target="_blank" rel="noreferrer" style="display: block; text-align: center; color: #2563eb; font-weight: bold; font-size: 10px; margin-top: 6px; text-decoration: none;">
+                🗺️ Rota no Google Maps
+              </a>
             </div>
           `);
 
@@ -330,7 +375,19 @@ function RadarMapaInterativo({
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800">
+            <span className="text-[10px] text-slate-500 uppercase font-black">Mapa:</span>
+            <select
+              value={tipoMapa}
+              onChange={e => setTipoMapa(e.target.value)}
+              className="bg-transparent text-xs font-bold text-amber-400 outline-none cursor-pointer"
+            >
+              <option value="google_streets" className="bg-slate-900">🗺️ Google Maps</option>
+              <option value="google_sat" className="bg-slate-900">🛰️ Google Satélite</option>
+              <option value="dark" className="bg-slate-900">🌑 Dark Mode</option>
+            </select>
+          </div>
+
           <div className="flex items-center gap-1 bg-slate-950 px-3 py-1 rounded-xl border border-slate-800">
             <span className="text-[10px] text-slate-500 uppercase font-black">Raio:</span>
             <select
@@ -430,10 +487,10 @@ function ModalRastreioLoja({ os, onClose, formatarMoeda }) {
         zoomControl: false
       });
 
-      window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        subdomains: 'abcd',
-        maxZoom: 19
+      window.L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        attribution: '&copy; Google Maps',
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        maxZoom: 20
       }).addTo(map);
 
       window.L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -457,9 +514,15 @@ function ModalRastreioLoja({ os, onClose, formatarMoeda }) {
       iconSize: [38, 38],
       iconAnchor: [19, 19]
     });
-    L.marker([latMed, lonMed], { icon: iconeMed }).addTo(map).bindPopup(`<b>Medidor: ${os.medidor?.nome_completo}</b><br/>A caminho da medição`);
+    L.marker([latMed, lonMed], { icon: iconeMed }).addTo(map).bindPopup(`
+      <b>Medidor: ${os.medidor?.nome_completo}</b><br/>
+      <span>A caminho da medição</span><br/>
+      <a href="https://www.google.com/maps/dir/?api=1&origin=${latMed},${lonMed}&destination=${latObra},${lonObra}" target="_blank" rel="noreferrer" style="color: #2563eb; font-weight: bold; display: block; margin-top: 4px; font-size: 11px;">
+        🗺️ Ver Rota no Google Maps
+      </a>
+    `);
 
-    L.polyline([[latMed, lonMed], [latObra, lonObra]], { color: '#38bdf8', weight: 3, dashArray: '6, 6' }).addTo(map);
+    L.polyline([[latMed, lonMed], [latObra, lonObra]], { color: '#2563eb', weight: 4, dashArray: '6, 6' }).addTo(map);
     map.fitBounds([[latMed, lonMed], [latObra, lonObra]], { padding: [40, 40] });
 
     return () => {
@@ -502,6 +565,153 @@ function ModalRastreioLoja({ os, onClose, formatarMoeda }) {
   );
 }
 
+// 📅 Modal para o Medidor Definir Dias e Horários de Atendimento
+function ModalAgendaMedidor({ isOpen, onClose, medidor, onSalvar }) {
+  const [diasSelecionados, setDiasSelecionados] = useState([]);
+  const [horasSelecionadas, setHorasSelecionadas] = useState([]);
+  const [salvando, setSalvando] = useState(false);
+
+  const todosDias = [
+    { id: 'Seg', label: 'Segunda' },
+    { id: 'Ter', label: 'Terça' },
+    { id: 'Qua', label: 'Quarta' },
+    { id: 'Qui', label: 'Quinta' },
+    { id: 'Sex', label: 'Sexta' },
+    { id: 'Sáb', label: 'Sábado' },
+    { id: 'Dom', label: 'Domingo' }
+  ];
+
+  const todasHoras = [
+    '08:00', '09:00', '10:00', '11:00', '12:00',
+    '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'
+  ];
+
+  useEffect(() => {
+    if (medidor) {
+      try {
+        const d = JSON.parse(medidor.dias_disponiveis || '["Seg","Ter","Qua","Qui","Sex","Sáb"]');
+        setDiasSelecionados(Array.isArray(d) ? d : ['Seg','Ter','Qua','Qui','Sex','Sáb']);
+      } catch(e) {
+        setDiasSelecionados(['Seg','Ter','Qua','Qui','Sex','Sáb']);
+      }
+      try {
+        const h = JSON.parse(medidor.horas_disponiveis || '["08:00","09:00","10:00","11:00","13:00","14:00","15:00","16:00","17:00"]');
+        setHorasSelecionadas(Array.isArray(h) ? h : ['08:00','09:00','10:00','11:00','13:00','14:00','15:00','16:00','17:00']);
+      } catch(e) {
+        setHorasSelecionadas(['08:00','09:00','10:00','11:00','13:00','14:00','15:00','16:00','17:00']);
+      }
+    }
+  }, [medidor, isOpen]);
+
+  if (!isOpen) return null;
+
+  const toggleDia = (dId) => {
+    setDiasSelecionados(prev => prev.includes(dId) ? prev.filter(x => x !== dId) : [...prev, dId]);
+  };
+
+  const toggleHora = (h) => {
+    setHorasSelecionadas(prev => prev.includes(h) ? prev.filter(x => x !== h) : [...prev, h]);
+  };
+
+  const salvar = async () => {
+    if (diasSelecionados.length === 0) return alert("Selecione pelo menos um dia da semana.");
+    if (horasSelecionadas.length === 0) return alert("Selecione pelo menos um horário de atendimento.");
+    setSalvando(true);
+    try {
+      await onSalvar(diasSelecionados, horasSelecionadas);
+      onClose();
+    } catch(e) {
+      alert("Erro ao salvar agenda.");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl p-6">
+        <div className="flex justify-between items-center pb-4 border-b border-slate-800 mb-6">
+          <div>
+            <h3 className="text-lg font-black text-white flex items-center gap-2">
+              <span>📅</span> Minha Agenda e Horários de Medição
+            </h3>
+            <p className="text-xs text-slate-400 mt-1">
+              O cliente só poderá agendar nos dias e horários que você marcar como disponíveis abaixo.
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-xl text-xs font-bold">✕</button>
+        </div>
+
+        {/* DIAS */}
+        <div className="mb-6">
+          <label className="text-xs font-black text-amber-400 uppercase tracking-wider block mb-3">
+            1. Dias da Semana de Atendimento ({diasSelecionados.length} selecionados)
+          </label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {todosDias.map(d => {
+              const ativo = diasSelecionados.includes(d.id);
+              return (
+                <button
+                  type="button"
+                  key={d.id}
+                  onClick={() => toggleDia(d.id)}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all border text-left flex items-center justify-between ${
+                    ativo
+                      ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-sm'
+                      : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700'
+                  }`}
+                >
+                  <span>{d.label}</span>
+                  <span className="text-[10px]">{ativo ? '✅' : '⚪'}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* HORAS */}
+        <div className="mb-6">
+          <label className="text-xs font-black text-blue-400 uppercase tracking-wider block mb-3">
+            2. Horários Disponíveis ({horasSelecionadas.length} selecionados)
+          </label>
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto custom-scrollbar p-1">
+            {todasHoras.map(h => {
+              const ativo = horasSelecionadas.includes(h);
+              return (
+                <button
+                  type="button"
+                  key={h}
+                  onClick={() => toggleHora(h)}
+                  className={`py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all border text-center ${
+                    ativo
+                      ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                      : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700'
+                  }`}
+                >
+                  {h}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+          <button onClick={onClose} className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={salvar}
+            disabled={salvando}
+            className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs shadow-lg transition-transform hover:scale-105"
+          >
+            {salvando ? 'Salvando...' : '💾 Salvar Minha Agenda'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PortalUsuario({ perfil, refId, setToken }) {
   const [todasOrdens, setTodasOrdens] = useState([])
   const [loading, setLoading] = useState(true)
@@ -521,6 +731,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
   const [isPixOpen, setIsPixOpen] = useState(false)
   const [osParaPix, setOsParaPix] = useState(null)
   const [osParaRastrear, setOsParaRastrear] = useState(null)
+  const [isAgendaOpen, setIsAgendaOpen] = useState(false)
   
   const [lojas, setLojas] = useState([])
   const [clientes, setClientes] = useState([])
@@ -630,17 +841,51 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
     
     try {
       const idLimpo = novoMedidorId ? parseInt(novoMedidorId) : null;
-      const novoStatus = idLimpo ? 'EM_ROTA' : 'PENDENTE_LOJA';
-      
-      await axios.put(`/api/os/${os.id}/status`, { medidor_id: idLimpo, status: novoStatus });
-      alert(idLimpo ? "✅ Rota atribuída com sucesso! E-mail enviado ao Medidor." : "✅ Rota libertada para o Radar de Demandas!");
+      // Mantém como PENDENTE_LOJA para o medidor confirmar após o agendamento do cliente
+      await axios.put(`/api/os/${os.id}/status`, { medidor_id: idLimpo, status: 'PENDENTE_LOJA' });
+      alert(idLimpo ? "✅ Medição direcionada ao Medidor! Ele confirmará a medição após o cliente agendar a data." : "✅ Rota libertada para o Radar de Demandas!");
       carregarOrdens();
     } catch (e) {
       alert("❌ Erro ao transferir a rota.");
     }
   }
 
-  const aceitarDemanda = async (osId) => { try { await axios.put(`/api/os/${osId}/pegar-demanda`); alert("✅ Rota confirmada!"); setAbaMedidor('minhas'); carregarOrdens() } catch (e) {} }
+  const aceitarDemanda = async (osId) => { 
+    try { 
+      await axios.put(`/api/os/${osId}/pegar-demanda`); 
+      alert("✅ Medição confirmada com sucesso! Rota iniciada."); 
+      setAbaMedidor('minhas'); 
+      carregarOrdens() 
+    } catch (e) {
+      const msg = e.response?.data?.erro || "Erro ao aceitar demanda.";
+      alert("⚠️ " + msg);
+    } 
+  }
+
+  const recusarDemanda = async (osId) => {
+    if (!window.confirm("Deseja recusar esta demanda e devolvê-la ao Radar de oportunidades?")) return;
+    try {
+      await axios.put(`/api/os/${osId}/recusar-demanda`);
+      alert("✅ Demanda devolvida ao Radar geral.");
+      carregarOrdens();
+    } catch (e) {
+      alert("❌ Erro ao recusar demanda.");
+    }
+  }
+
+  const salvarAgendaMedidor = async (dias, horas) => {
+    try {
+      await axios.put(`/api/medidores/${refId}/disponibilidade`, {
+        dias_disponiveis: JSON.stringify(dias),
+        horas_disponiveis: JSON.stringify(horas)
+      });
+      alert("✅ Agenda atualizada com sucesso! O cliente só poderá agendar nos dias e horários selecionados.");
+      carregarCadastros();
+    } catch (e) {
+      alert("❌ Erro ao salvar agenda.");
+    }
+  }
+
   const marcarChegada = async (osId) => { try { await axios.put(`/api/os/${osId}/cheguei`); alert("📍 Check-in realizado! Loja notificada."); carregarOrdens() } catch (error) { alert("⚠️ Erro ao registrar chegada."); } }
   const entregarMedicao = async (osId, arquivoURL, mat, obs) => { 
     try { 
@@ -659,7 +904,8 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
     listaLoja = todasOrdens.filter(o => passaMes(o) && passaSec(o))
   } else {
     medidorEmRota = todasOrdens.filter(os => os.medidor_id === refId && (os.status === 'EM_ROTA' || os.status === 'NO_LOCAL'))
-    medidorPendentes = todasOrdens.filter(os => os.status === 'PENDENTE_LOJA' && !os.medidor_id)
+    // Demandas abertas no mercado OU direcionadas especificamente para este medidor aguardando confirmação
+    medidorPendentes = todasOrdens.filter(os => os.status === 'PENDENTE_LOJA' && (!os.medidor_id || os.medidor_id === refId))
     
     let historicoBruto = todasOrdens.filter(os => os.medidor_id === refId && os.status === 'CONCLUIDO')
     medidorHistorico = historicoBruto.filter(os => {
@@ -708,6 +954,9 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
             <button onClick={() => setAbaMedidor('historico')} className={`flex-1 sm:flex-none px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center justify-center gap-2 min-w-[140px] ${abaMedidor === 'historico' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800'}`}>
               💰 Meu Caixa
             </button>
+            <button onClick={() => setIsAgendaOpen(true)} className="flex-1 sm:flex-none px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center justify-center gap-2 min-w-[140px] bg-slate-900 border border-slate-800 text-slate-300 hover:border-amber-500/50 hover:text-white shadow-sm">
+              📅 Minha Agenda
+            </button>
           </div>
 
           {abaMedidor === 'oportunidades' && (
@@ -720,7 +969,14 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
               {visaoDemanda === 'lista' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {medidorPendentes.map(os => (
-                    <CardDemandaMedidor key={os.id} os={os} formatarMoeda={formatarMoeda} aceitarDemanda={aceitarDemanda} />
+                    <CardDemandaMedidor 
+                      key={os.id} 
+                      os={os} 
+                      formatarMoeda={formatarMoeda} 
+                      aceitarDemanda={aceitarDemanda}
+                      recusarDemanda={recusarDemanda}
+                      refId={refId}
+                    />
                   ))}
                   {medidorPendentes.length === 0 && <div className="col-span-full py-12 text-center text-slate-500 font-medium">Nenhuma demanda com documentos completos no momento.</div>}
                 </div>
@@ -963,6 +1219,16 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
           os={osParaRastrear}
           onClose={() => setOsParaRastrear(null)}
           formatarMoeda={formatarMoeda}
+        />
+      )}
+
+      {/* MODAL DE AGENDA E DISPONIBILIDADE DO MEDIDOR */}
+      {isAgendaOpen && (
+        <ModalAgendaMedidor
+          isOpen={isAgendaOpen}
+          onClose={() => setIsAgendaOpen(false)}
+          medidor={medidores.find(m => m.id === refId)}
+          onSalvar={salvarAgendaMedidor}
         />
       )}
     </div>

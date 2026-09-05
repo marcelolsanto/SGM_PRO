@@ -52,10 +52,10 @@ function MapaRastreioCliente({ os }) {
         zoomControl: false
       });
 
-      window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        subdomains: 'abcd',
-        maxZoom: 19
+      window.L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        attribution: '&copy; Google Maps',
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        maxZoom: 20
       }).addTo(map);
 
       window.L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -170,31 +170,57 @@ export default function MagicLink({ token }) {
   const [briefingAmbientes, setBriefingAmbientes] = useState({})
 
   // ==========================================
-  // MOTOR DE CALENDÁRIO (DIAS E HORAS)
+  // MOTOR DE CALENDÁRIO (DIAS E HORAS BASEADO NA AGENDA DO MEDIDOR)
   // ==========================================
+  const agendaMedidor = useMemo(() => {
+    if (!os?.medidor) return null;
+    let dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    let horas = ['08:00', '09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
+    try {
+      if (os.medidor.dias_disponiveis) {
+        const d = JSON.parse(os.medidor.dias_disponiveis);
+        if (Array.isArray(d) && d.length > 0) dias = d;
+      }
+    } catch(e) {}
+    try {
+      if (os.medidor.horas_disponiveis) {
+        const h = JSON.parse(os.medidor.horas_disponiveis);
+        if (Array.isArray(h) && h.length > 0) horas = h;
+      }
+    } catch(e) {}
+    return { dias, horas };
+  }, [os?.medidor]);
+
   const diasDisponiveis = useMemo(() => {
-    const dias = []
-    let d = new Date()
-    while(dias.length < 14) { // Gera os próximos 14 dias úteis/sábados
-      d.setDate(d.getDate() + 1)
-      if (d.getDay() !== 0) dias.push(new Date(d)) // Pula o Domingo (0)
+    const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const diasPermitidos = agendaMedidor ? agendaMedidor.dias : ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const dias = [];
+    let d = new Date();
+    while (dias.length < 14) {
+      d.setDate(d.getDate() + 1);
+      const nomeDia = diasSemana[d.getDay()];
+      if (diasPermitidos.includes(nomeDia)) {
+        dias.push(new Date(d));
+      }
     }
-    return dias
-  }, [])
+    return dias;
+  }, [agendaMedidor]);
 
   const horariosDisponiveis = useMemo(() => {
-    if (!briefingGeral.data_agendada) return []
-    const [ano, mes, dia] = briefingGeral.data_agendada.split('-')
-    const dataSelecionada = new Date(ano, mes - 1, dia) // Força a data correta
-    
-    const isSabado = dataSelecionada.getDay() === 6
-    const limite = isSabado ? 12 : 17
-    const horas = []
-    for (let i = 8; i <= limite; i++) {
-      horas.push(`${i.toString().padStart(2, '0')}:00`)
+    if (!briefingGeral.data_agendada) return [];
+    if (agendaMedidor && agendaMedidor.horas.length > 0) {
+      return agendaMedidor.horas;
     }
-    return horas
-  }, [briefingGeral.data_agendada])
+    const [ano, mes, dia] = briefingGeral.data_agendada.split('-');
+    const dataSelecionada = new Date(ano, mes - 1, dia);
+    const isSabado = dataSelecionada.getDay() === 6;
+    const limite = isSabado ? 12 : 17;
+    const horas = [];
+    for (let i = 8; i <= limite; i++) {
+      horas.push(`${i.toString().padStart(2, '0')}:00`);
+    }
+    return horas;
+  }, [briefingGeral.data_agendada, agendaMedidor]);
 
   const formatarDataBotao = (data) => {
     const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -372,8 +398,20 @@ export default function MagicLink({ token }) {
               
               {/* 👇 1. BLOCO DE CALENDÁRIO GAMIFICADO 👇 */}
               <div className="space-y-4 border-b border-slate-200 pb-8">
-                <h3 className="text-lg font-black text-blue-600 mb-4">1. Escolha a Data e Hora</h3>
+                <h3 className="text-lg font-black text-blue-600 mb-2">1. Escolha a Data e Hora</h3>
                 
+                {os?.medidor && (
+                  <div className="bg-blue-50 border border-blue-200 p-3.5 rounded-2xl flex items-center gap-3 text-xs text-blue-900 mb-3">
+                    <span className="text-2xl">📅</span>
+                    <div>
+                      <p className="font-bold">Agenda oficial de {os.medidor.nome_completo}</p>
+                      <p className="text-[11px] text-blue-700 mt-0.5">
+                        Estes são os dias e horários em que o especialista está disponível para lhe atender.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Qual o melhor dia?</p>
                   <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar snap-x">

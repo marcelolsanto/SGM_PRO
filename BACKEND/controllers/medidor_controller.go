@@ -105,3 +105,36 @@ func ObterLocalizacaoMedidor(c *fiber.Ctx) error {
 		"ultima_localizacao": m.UltimaLocalizacao,
 	})
 }
+
+func AtualizarDisponibilidadeMedidor(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var m models.Medidor
+	if err := config.DB.First(&m, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"erro": "Medidor não encontrado"})
+	}
+
+	type DisponibilidadePayload struct {
+		DiasDisponiveis  string `json:"dias_disponiveis"`
+		HorasDisponiveis string `json:"horas_disponiveis"`
+	}
+
+	var req DisponibilidadePayload
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"erro": "Corpo da requisição inválido"})
+	}
+
+	if req.DiasDisponiveis != "" {
+		m.DiasDisponiveis = req.DiasDisponiveis
+	}
+	if req.HorasDisponiveis != "" {
+		m.HorasDisponiveis = req.HorasDisponiveis
+	}
+
+	config.DB.Save(&m)
+	return c.JSON(fiber.Map{
+		"mensagem":          "Disponibilidade da agenda atualizada com sucesso",
+		"dias_disponiveis":  m.DiasDisponiveis,
+		"horas_disponiveis": m.HorasDisponiveis,
+	})
+}
+

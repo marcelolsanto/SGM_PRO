@@ -311,6 +311,16 @@ func PegarDemanda(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"erro": "Ordem não encontrada"})
 	}
 
+	// 1. A demanda DEVE estar paga para poder ser aceita
+	if os.StatusPagamento != "PAGO" {
+		return c.Status(400).JSON(fiber.Map{"erro": "A medição ainda não foi paga pela loja. O aceite só é liberado após a confirmação do pagamento PIX."})
+	}
+
+	// 2. O cliente DEVE ter concluído o agendamento de data e horário
+	if os.DataAgendada == "" || os.HoraAgendada == "" || !os.TermosAceitos {
+		return c.Status(400).JSON(fiber.Map{"erro": "O cliente ainda não confirmou o agendamento de data e horário no Magic Link. Aguarde o agendamento."})
+	}
+
 	os.MedidorID = &refID
 	os.Status = "EM_ROTA"
 	now := time.Now()
@@ -347,6 +357,25 @@ func PegarDemanda(c *fiber.Ctx) error {
 	config.DB.Save(&os)
 
 	return c.Status(200).JSON(os)
+}
+
+func RecusarDemanda(c *fiber.Ctx) error {
+	perfil, _ := getPerfilERefID(c)
+	if perfil != "MEDIDOR" {
+		return c.Status(403).JSON(fiber.Map{"erro": "Apenas medidores podem recusar demandas"})
+	}
+
+	var os models.OrdemServico
+	if err := config.DB.First(&os, c.Params("id")).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"erro": "Ordem não encontrada"})
+	}
+
+	// Devolve a OS para o radar / marketplace aberto
+	os.MedidorID = nil
+	os.Status = "PENDENTE_LOJA"
+	config.DB.Save(&os)
+
+	return c.Status(200).JSON(fiber.Map{"mensagem": "Demanda recusada e devolvida ao Radar com sucesso!"})
 }
 
 func MarcarChegada(c *fiber.Ctx) error {

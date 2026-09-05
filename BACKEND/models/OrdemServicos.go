@@ -28,6 +28,8 @@ type OrdemServico struct {
 	StatusPagamento  string     `gorm:"column:status_pagamento;default:'PENDENTE'" json:"status_pagamento"`
 	PixCopiaECola    string     `gorm:"column:pix_copia_e_cola;type:text" json:"pix_copia_e_cola"`
 	DataPagamento    *time.Time `gorm:"column:data_pagamento" json:"data_pagamento"`
+	DataAgendada     string     `gorm:"column:data_agendada" json:"data_agendada"`
+	HoraAgendada     string     `gorm:"column:hora_agendada" json:"hora_agendada"`
 	DataAceite       *time.Time `gorm:"column:data_aceite" json:"data_aceite"`
 	DataConclusao    *time.Time `gorm:"column:data_conclusao" json:"data_conclusao"`
 	CriadoEm         time.Time  `gorm:"column:criado_em;autoCreateTime" json:"criado_em"`

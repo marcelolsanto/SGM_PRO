@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"time"
 
 	"workspace/backend/config"
@@ -66,6 +67,22 @@ func AceitarMagicLink(c *fiber.Ctx) error {
 		UserAgent:      userAgent,
 		DataHoraUTC:    agoraUTC,
 	})
+
+	// Extrai data e hora agendadas diretamente para as colunas da OS
+	var parsed struct {
+		Geral struct {
+			DataAgendada string `json:"data_agendada"`
+			HoraAgendada string `json:"hora_agendada"`
+		} `json:"geral"`
+	}
+	if err := json.Unmarshal([]byte(req.DadosJSON), &parsed); err == nil {
+		if parsed.Geral.DataAgendada != "" {
+			os.DataAgendada = parsed.Geral.DataAgendada
+		}
+		if parsed.Geral.HoraAgendada != "" {
+			os.HoraAgendada = parsed.Geral.HoraAgendada
+		}
+	}
 
 	os.TermosAceitos = true
 	os.DataAceite = &agoraUTC
