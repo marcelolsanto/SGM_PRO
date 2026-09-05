@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import axios from 'axios'
 
 export default function LandingPage({ onIrParaLogin }) {
   // Calculadora Interativa - Tipo de Perfil
@@ -33,11 +34,41 @@ export default function LandingPage({ onIrParaLogin }) {
   const [formTelefone, setFormTelefone] = useState('')
   const [formCidade, setFormCidade] = useState('')
   const [formSucesso, setFormSucesso] = useState(false)
+  const [formLoading, setFormLoading] = useState(false)
+  const [whatsappLeadUrl, setWhatsappLeadUrl] = useState('https://wa.me/5511972980409')
 
-  const handleSubmitLead = (e) => {
+  const handleSubmitLead = async (e) => {
     e.preventDefault()
-    setFormSucesso(true)
-    setTimeout(() => setFormSucesso(false), 8000)
+    setFormLoading(true)
+    try {
+      const res = await axios.post('/api/contato', {
+        tipo: formTipo,
+        nome: formNome,
+        empresa: formEmpresa,
+        email: formEmail,
+        telefone: formTelefone,
+        cidade: formCidade,
+        mensagem: formTipo === 'empresa' 
+          ? 'Solicitação de Proposta Comercial / Demonstração para Loja' 
+          : 'Cadastro e Credenciamento de Medidor Técnico Parceiro'
+      })
+      if (res.data?.whatsapp_url) {
+        setWhatsappLeadUrl(res.data.whatsapp_url)
+      }
+      setFormSucesso(true)
+      setFormNome('')
+      setFormEmpresa('')
+      setFormEmail('')
+      setFormTelefone('')
+      setFormCidade('')
+    } catch (err) {
+      console.warn('Fallback offline WhatsApp:', err)
+      const msgWA = `Olá Marcelo! Me chamo *${formNome}* (${formEmpresa}) de *${formCidade}*. Gostaria de saber mais sobre o SGM.PRO (${formTipo}). Tel: ${formTelefone} | E-mail: ${formEmail}`
+      setWhatsappLeadUrl(`https://wa.me/5511972980409?text=${encodeURIComponent(msgWA)}`)
+      setFormSucesso(true)
+    } finally {
+      setFormLoading(false)
+    }
   }
 
   const formatarMoeda = (v) => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -881,8 +912,29 @@ export default function LandingPage({ onIrParaLogin }) {
             </div>
 
             {formSucesso && (
-              <div className="bg-emerald-500/10 border border-emerald-500/40 text-emerald-400 p-5 rounded-2xl mb-8 text-center text-sm font-bold animate-fade-in">
-                🎉 Solicitação registrada com sucesso! Nosso time entrará em contato via WhatsApp nas próximas 2 horas úteis.
+              <div className="bg-emerald-950/60 border border-emerald-500/50 p-6 rounded-2xl mb-8 text-center animate-fade-in">
+                <span className="text-3xl block mb-2">🎉</span>
+                <h4 className="text-lg font-black text-emerald-400">Solicitação Enviada com Sucesso!</h4>
+                <p className="text-xs text-slate-300 mt-1 max-w-lg mx-auto">
+                  Sua mensagem foi gravada no sistema e notificada à nossa equipe. Se preferir atendimento imediato, clique no botão abaixo para conversar no WhatsApp oficial:
+                </p>
+                <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <a 
+                    href={whatsappLeadUrl} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-6 py-3 rounded-xl shadow-lg transition-all flex items-center gap-2"
+                  >
+                    <span>💬</span> Iniciar Conversa no WhatsApp Agora ➔
+                  </a>
+                  <button 
+                    type="button" 
+                    onClick={() => setFormSucesso(false)} 
+                    className="text-xs text-slate-400 hover:text-white font-bold px-4 py-2"
+                  >
+                    Enviar Outra Mensagem
+                  </button>
+                </div>
               </div>
             )}
 
@@ -955,9 +1007,10 @@ export default function LandingPage({ onIrParaLogin }) {
 
               <button 
                 type="submit" 
-                className="w-full mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white py-4 rounded-xl font-black text-sm shadow-xl shadow-blue-600/20 transition-all"
+                disabled={formLoading}
+                className="w-full mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white py-4 rounded-xl font-black text-sm shadow-xl shadow-blue-600/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {formTipo === 'empresa' ? 'Solicitar Contato Comercial para Minha Loja ➔' : 'Enviar Meu Cadastro como Medidor ➔'}
+                {formLoading ? 'Enviando e Notificando Equipe...' : (formTipo === 'empresa' ? 'Solicitar Contato Comercial para Minha Loja ➔' : 'Enviar Meu Cadastro como Medidor ➔')}
               </button>
             </form>
 
