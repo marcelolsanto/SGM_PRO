@@ -91,6 +91,20 @@ func geocodificarNominatim(client *http.Client, endereco string) (float64, float
 	return lat, lon, nil
 }
 
+// GeocodificarEndereco converte um endereço em latitude e longitude (com fallback)
+func GeocodificarEndereco(endereco string) (float64, float64, error) {
+	endereco = strings.TrimSpace(endereco)
+	if endereco == "" {
+		return -23.550520, -46.633308, nil // Praça da Sé, SP como fallback
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	lat, lon, err := geocodificarNominatim(client, endereco)
+	if err != nil {
+		return -23.550520, -46.633308, err
+	}
+	return lat, lon, nil
+}
+
 // rotearOSRM busca distância em km e duração em minutos entre duas coordenadas
 func rotearOSRM(client *http.Client, lat1, lon1, lat2, lon2 float64) (float64, float64, error) {
 	reqURL := fmt.Sprintf("http://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?overview=false", lon1, lat1, lon2, lat2)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import axios from 'axios'
 import NovaOsModal from '../components/NovaOsModal'
 import ModalPagamentoPix from '../components/ModalPagamentoPix'
@@ -6,6 +6,501 @@ import ModalPagamentoPix from '../components/ModalPagamentoPix'
 import TabelaCaixaMedidor from '../components/TabelaCaixaMedidor'
 import CardDemandaMedidor from '../components/CardDemandaMedidor'
 import CardRotaMedidor from '../components/CardRotaMedidor'
+
+// Calcula a distância aproximada em KM entre duas coordenadas (Haversine)
+function calcularDistanciaKm(lat1, lon1, lat2, lon2) {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+  const R = 6371;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return parseFloat((R * c).toFixed(1));
+}
+
+// 🗺️ Radar de Campo com Visualização em Tempo Real (Leaflet Dark Matter)
+function RadarMapaInterativo({
+  medidor,
+  lojas = [],
+  demandasPendentes = [],
+  ordensEmRota = [],
+  aceitarDemanda,
+  formatarMoeda,
+  onAtualizarLocalizacao
+}) {
+  const mapContainerRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markersGroupRef = useRef(null);
+  const routeLineRef = useRef(null);
+
+  const [posicaoMedidor, setPosicaoMedidor] = useState({
+    lat: medidor?.latitude && Number(medidor.latitude) !== 0 ? Number(medidor.latitude) : -23.550520,
+    lon: medidor?.longitude && Number(medidor.longitude) !== 0 ? Number(medidor.longitude) : -46.633308
+  });
+
+  const [filtroRaio, setFiltroRaio] = useState(50);
+  const [mostrarLojas, setMostrarLojas] = useState(true);
+  const [mostrarMinhaRota, setMostrarMinhaRota] = useState(true);
+  const [mostrarDemandas, setMostrarDemandas] = useState(true);
+
+  // 1. Rastreamento GPS ao vivo do dispositivo do Medidor
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const novaPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setPosicaoMedidor(novaPos);
+        if (onAtualizarLocalizacao) {
+          onAtualizarLocalizacao(novaPos.lat, novaPos.lon);
+        }
+      },
+      (err) => {
+        console.warn("GPS não acessível, usando posição base:", err.message);
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [onAtualizarLocalizacao]);
+
+  // 2. Inicialização do Mapa Leaflet
+  useEffect(() => {
+    if (!mapContainerRef.current || !window.L) return;
+
+    if (!mapInstanceRef.current) {
+      const map = window.L.map(mapContainerRef.current, {
+        center: [posicaoMedidor.lat, posicaoMedidor.lon],
+        zoom: 12,
+        zoomControl: false
+      });
+
+      window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 19
+      }).addTo(map);
+
+      window.L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+      markersGroupRef.current = window.L.layerGroup().addTo(map);
+      mapInstanceRef.current = map;
+    }
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
+
+  // 3. Atualização de Marcadores e Traçado de Rotas
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const L = window.L;
+    if (!map || !L || !markersGroupRef.current) return;
+
+    markersGroupRef.current.clearLayers();
+    if (routeLineRef.current) {
+      map.removeLayer(routeLineRef.current);
+      routeLineRef.current = null;
+    }
+
+    const bounds = [];
+
+    // Ícone do Medidor (Ponto Pulsante GPS)
+    const iconeMedidor = L.divIcon({
+      className: 'custom-medidor-icon',
+      html: `
+        <div style="position: relative; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;">
+          <div style="position: absolute; width: 42px; height: 42px; background: rgba(59, 130, 246, 0.4); border-radius: 50%;"></div>
+          <div style="position: relative; width: 32px; height: 32px; background: #2563eb; border: 2px solid #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+            🛵
+          </div>
+        </div>
+      `,
+      iconSize: [42, 42],
+      iconAnchor: [21, 21]
+    });
+
+    L.marker([posicaoMedidor.lat, posicaoMedidor.lon], { icon: iconeMedidor })
+      .addTo(markersGroupRef.current)
+      .bindPopup(`
+        <div style="color: #0f172a; font-family: sans-serif; font-size: 12px;">
+          <strong style="font-size: 13px; color: #1e40af;">📍 Sua Posição Atual</strong><br/>
+          <span>${medidor?.nome_completo || 'Medidor Conectado'}</span><br/>
+          <span style="color: #16a34a; font-weight: bold; font-size: 10px;">🟢 GPS Ativo em Tempo Real</span>
+        </div>
+      `);
+    bounds.push([posicaoMedidor.lat, posicaoMedidor.lon]);
+
+    const rotaCoordenadas = [[posicaoMedidor.lat, posicaoMedidor.lon]];
+
+    // Marcadores das Lojas Parceiras
+    if (mostrarLojas) {
+      lojas.forEach(loja => {
+        const lat = Number(loja.latitude) || -23.561684;
+        const lon = Number(loja.longitude) || -46.655981;
+        const dist = calcularDistanciaKm(posicaoMedidor.lat, posicaoMedidor.lon, lat, lon);
+
+        const iconeLoja = L.divIcon({
+          className: 'custom-loja-icon',
+          html: `
+            <div style="width: 32px; height: 32px; background: #0f172a; border: 2px solid #38bdf8; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.6);">
+              🏢
+            </div>
+          `,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+
+        L.marker([lat, lon], { icon: iconeLoja })
+          .addTo(markersGroupRef.current)
+          .bindPopup(`
+            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px;">
+              <strong style="color: #0284c7; font-size: 13px;">🏢 ${loja.nome_fantasia}</strong><br/>
+              <span style="color: #64748b; font-size: 11px;">${loja.endereco || 'Endereço da loja'}</span><br/>
+              <strong style="color: #334155; font-size: 11px; margin-top: 4px; display: block;">Distância: ${dist} km</strong>
+            </div>
+          `);
+        bounds.push([lat, lon]);
+      });
+    }
+
+    // Marcadores das Minhas Obras (Em Rota / Aceitas)
+    if (mostrarMinhaRota) {
+      ordensEmRota.forEach(os => {
+        const lat = Number(os.latitude_obra) || -23.548900;
+        const lon = Number(os.longitude_obra) || -46.638800;
+        const dist = calcularDistanciaKm(posicaoMedidor.lat, posicaoMedidor.lon, lat, lon);
+
+        rotaCoordenadas.push([lat, lon]);
+
+        const iconeEmRota = L.divIcon({
+          className: 'custom-rota-icon',
+          html: `
+            <div style="width: 34px; height: 34px; background: #059669; border: 2px solid #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; box-shadow: 0 4px 12px rgba(5,150,105,0.4);">
+              🛋️
+            </div>
+          `,
+          iconSize: [34, 34],
+          iconAnchor: [17, 17]
+        });
+
+        L.marker([lat, lon], { icon: iconeEmRota })
+          .addTo(markersGroupRef.current)
+          .bindPopup(`
+            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 180px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <strong style="color: #059669; font-size: 13px;">#${String(os.id).padStart(4, '0')} ${os.cliente_nome}</strong>
+                <span style="background: #ecfdf5; color: #059669; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px;">EM ROTA</span>
+              </div>
+              <span style="color: #64748b; font-size: 11px;">📍 ${os.endereco_obra}</span><br/>
+              <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between;">
+                <span>Repasse:</span> <strong style="color: #059669;">${formatarMoeda(os.custo_medidor)}</strong>
+              </div>
+              <div style="font-size: 10px; color: #64748b; margin-top: 2px;">
+                🚗 ${dist} km da sua posição
+              </div>
+            </div>
+          `);
+        bounds.push([lat, lon]);
+      });
+    }
+
+    // Marcadores de Demandas Abertas (Oportunidades no Radar)
+    if (mostrarDemandas) {
+      demandasPendentes.forEach(os => {
+        const lat = Number(os.latitude_obra) || -23.185700;
+        const lon = Number(os.longitude_obra) || -46.897800;
+        const dist = calcularDistanciaKm(posicaoMedidor.lat, posicaoMedidor.lon, lat, lon);
+
+        if (filtroRaio > 0 && dist > filtroRaio) return;
+
+        const iconeDemanda = L.divIcon({
+          className: 'custom-demanda-icon',
+          html: `
+            <div style="width: 32px; height: 32px; background: #f59e0b; border: 2px solid #ffffff; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 15px; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5); cursor: pointer;">
+              📐
+            </div>
+          `,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+
+        const marker = L.marker([lat, lon], { icon: iconeDemanda })
+          .addTo(markersGroupRef.current)
+          .bindPopup(`
+            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 200px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <strong style="color: #b45309; font-size: 13px;">${os.cliente_nome}</strong>
+                <span style="background: #fef3c7; color: #b45309; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px;">DISPONÍVEL</span>
+              </div>
+              <span style="color: #64748b; font-size: 11px;">📍 ${os.endereco_obra}</span>
+              <div style="background: #f8fafc; border-radius: 8px; padding: 6px; margin: 6px 0; border: 1px solid #e2e8f0;">
+                <div style="display: flex; justify-content: space-between; font-size: 11px;">
+                  <span>Distância até você:</span>
+                  <strong style="color: #0284c7;">${dist} km</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 2px;">
+                  <span>Ganho de Repasse:</span>
+                  <strong style="color: #16a34a; font-size: 13px;">${formatarMoeda(os.custo_medidor)}</strong>
+                </div>
+              </div>
+              <button id="btn-aceitar-mapa-${os.id}" style="width: 100%; background: #f59e0b; color: #0f172a; border: none; padding: 8px; border-radius: 8px; font-weight: 900; font-size: 11px; cursor: pointer; text-transform: uppercase;">
+                ✋ Aceitar Medição Agora
+              </button>
+            </div>
+          `);
+
+        marker.on('popupopen', () => {
+          setTimeout(() => {
+            const btn = document.getElementById(`btn-aceitar-mapa-${os.id}`);
+            if (btn) {
+              btn.onclick = () => {
+                aceitarDemanda(os.id);
+              };
+            }
+          }, 50);
+        });
+
+        bounds.push([lat, lon]);
+      });
+    }
+
+    // Traçado da Linha de Rota Otimizada
+    if (rotaCoordenadas.length > 1) {
+      routeLineRef.current = L.polyline(rotaCoordenadas, {
+        color: '#38bdf8',
+        weight: 3,
+        dashArray: '8, 8',
+        opacity: 0.8
+      }).addTo(map);
+    }
+
+    if (bounds.length > 0) {
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+    }
+  }, [posicaoMedidor, lojas, demandasPendentes, ordensEmRota, mostrarLojas, mostrarMinhaRota, mostrarDemandas, filtroRaio]);
+
+  const centralizarEmMim = () => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setView([posicaoMedidor.lat, posicaoMedidor.lon], 14, { animate: true });
+    }
+  };
+
+  const demandasOrdenadasProximidade = [...demandasPendentes].map(os => {
+    const lat = Number(os.latitude_obra) || -23.185700;
+    const lon = Number(os.longitude_obra) || -46.897800;
+    const dist = calcularDistanciaKm(posicaoMedidor.lat, posicaoMedidor.lon, lat, lon);
+    return { ...os, distancia_km: dist };
+  }).sort((a, b) => a.distancia_km - b.distancia_km);
+
+  return (
+    <div className="relative w-full h-[65vh] md:h-[72vh] bg-slate-950 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col">
+      <div className="p-3.5 bg-slate-900/90 backdrop-blur border-b border-slate-800 flex flex-wrap justify-between items-center gap-3 z-10">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-black text-white flex items-center gap-1.5 mr-2">
+            <span className="text-blue-400">🗺️</span> Radar Logístico
+          </span>
+
+          <button
+            onClick={() => setMostrarDemandas(!mostrarDemandas)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${mostrarDemandas ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-500'}`}
+          >
+            <span>🚨</span> Demandas ({demandasPendentes.length})
+          </button>
+
+          <button
+            onClick={() => setMostrarMinhaRota(!mostrarMinhaRota)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${mostrarMinhaRota ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-500'}`}
+          >
+            <span>🛵</span> Minha Rota ({ordensEmRota.length})
+          </button>
+
+          <button
+            onClick={() => setMostrarLojas(!mostrarLojas)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${mostrarLojas ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-800 text-slate-500'}`}
+          >
+            <span>🏢</span> Lojas ({lojas.length})
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-slate-950 px-3 py-1 rounded-xl border border-slate-800">
+            <span className="text-[10px] text-slate-500 uppercase font-black">Raio:</span>
+            <select
+              value={filtroRaio}
+              onChange={e => setFiltroRaio(Number(e.target.value))}
+              className="bg-transparent text-xs font-bold text-white outline-none cursor-pointer"
+            >
+              <option value={15} className="bg-slate-900">Até 15 km</option>
+              <option value={30} className="bg-slate-900">Até 30 km</option>
+              <option value={50} className="bg-slate-900">Até 50 km</option>
+              <option value={100} className="bg-slate-900">Até 100 km</option>
+              <option value={0} className="bg-slate-900">Sem limite</option>
+            </select>
+          </div>
+
+          <button
+            onClick={centralizarEmMim}
+            title="Centralizar no Medidor"
+            className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1"
+          >
+            <span>🎯</span> <span className="hidden sm:inline">Minha Posição</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 relative w-full h-full">
+        <div ref={mapContainerRef} className="w-full h-full z-0" />
+
+        {demandasPendentes.length > 0 && (
+          <div className="absolute bottom-4 left-4 right-4 md:right-auto md:w-96 max-h-56 bg-slate-900/95 backdrop-blur border border-slate-800 rounded-2xl p-4 shadow-2xl z-10 overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-800">
+              <span className="text-xs font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                <span>⚡</span> Oportunidades por Proximidade
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">Mais perto de você</span>
+            </div>
+
+            <div className="space-y-2 overflow-y-auto custom-scrollbar pr-1 flex-1">
+              {demandasOrdenadasProximidade.slice(0, 4).map(os => (
+                <div key={os.id} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 flex justify-between items-center hover:border-amber-500/50 transition-colors">
+                  <div className="truncate mr-2">
+                    <p className="text-xs font-bold text-white truncate">{os.cliente_nome}</p>
+                    <p className="text-[10px] text-slate-400 truncate">{os.endereco_obra}</p>
+                    <p className="text-[10px] font-mono text-blue-400 mt-0.5">
+                      📍 {os.distancia_km} km de você • {formatarMoeda(os.custo_medidor)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => aceitarDemanda(os.id)}
+                    className="bg-amber-500 hover:bg-amber-400 text-slate-900 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase whitespace-nowrap shadow transition-transform hover:scale-105"
+                  >
+                    Aceitar
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 🏢 Modal para Loja Rastrear o Medidor em Deslocamento
+function ModalRastreioLoja({ os, onClose, formatarMoeda }) {
+  const mapContainerRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const [posMedidor, setPosMedidor] = useState(null);
+
+  useEffect(() => {
+    if (!os?.medidor_id) return;
+    const buscarLocalizacao = () => {
+      axios.get(`/api/medidores/${os.medidor_id}/localizacao`).then(res => {
+        if (res.data?.latitude && res.data?.longitude) {
+          setPosMedidor({ lat: Number(res.data.latitude), lon: Number(res.data.longitude) });
+        }
+      }).catch(() => {});
+    };
+
+    buscarLocalizacao();
+    const interval = setInterval(buscarLocalizacao, 8000);
+    return () => clearInterval(interval);
+  }, [os]);
+
+  useEffect(() => {
+    if (!mapContainerRef.current || !window.L) return;
+
+    const latObra = Number(os.latitude_obra) || -23.548900;
+    const lonObra = Number(os.longitude_obra) || -46.638800;
+    const latMed = posMedidor?.lat || -23.550520;
+    const lonMed = posMedidor?.lon || -46.633308;
+
+    if (!mapInstanceRef.current) {
+      const map = window.L.map(mapContainerRef.current, {
+        center: [latObra, lonObra],
+        zoom: 13,
+        zoomControl: false
+      });
+
+      window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 19
+      }).addTo(map);
+
+      window.L.control.zoom({ position: 'bottomright' }).addTo(map);
+      mapInstanceRef.current = map;
+    }
+
+    const map = mapInstanceRef.current;
+    const L = window.L;
+
+    const iconeObra = L.divIcon({
+      className: 'custom-obra-icon',
+      html: `<div style="width: 36px; height: 36px; background: #059669; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">🏠</div>`,
+      iconSize: [36, 36],
+      iconAnchor: [18, 18]
+    });
+    L.marker([latObra, lonObra], { icon: iconeObra }).addTo(map).bindPopup(`<b>Obra: ${os.cliente_nome}</b><br/>${os.endereco_obra}`);
+
+    const iconeMed = L.divIcon({
+      className: 'custom-med-icon',
+      html: `<div style="width: 38px; height: 38px; background: #2563eb; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 4px 12px rgba(37,99,235,0.6);">🛵</div>`,
+      iconSize: [38, 38],
+      iconAnchor: [19, 19]
+    });
+    L.marker([latMed, lonMed], { icon: iconeMed }).addTo(map).bindPopup(`<b>Medidor: ${os.medidor?.nome_completo}</b><br/>A caminho da medição`);
+
+    L.polyline([[latMed, lonMed], [latObra, lonObra]], { color: '#38bdf8', weight: 3, dashArray: '6, 6' }).addTo(map);
+    map.fitBounds([[latMed, lonMed], [latObra, lonObra]], { padding: [40, 40] });
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, [os, posMedidor]);
+
+  const dist = posMedidor ? calcularDistanciaKm(posMedidor.lat, posMedidor.lon, Number(os.latitude_obra) || -23.548900, Number(os.longitude_obra) || -46.638800) : 0;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col">
+        <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
+          <div>
+            <h3 className="text-base font-black text-white flex items-center gap-2">
+              <span>🛵</span> Rastreamento do Medidor ao Vivo
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">OS #{String(os.id).padStart(4, '0')} • {os.cliente_nome}</p>
+          </div>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-xl text-xs font-bold">✕ Fechar</button>
+        </div>
+
+        <div className="p-4 bg-slate-900/50 border-b border-slate-800 flex justify-between items-center text-xs">
+          <div>
+            <span className="text-slate-500">Profissional:</span> <strong className="text-white ml-1">{os.medidor?.nome_completo}</strong>
+          </div>
+          <div className="bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-xl text-blue-400 font-mono font-bold">
+            Distância até a obra: ~{dist} km
+          </div>
+        </div>
+
+        <div className="h-96 w-full relative">
+          <div ref={mapContainerRef} className="w-full h-full" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function PortalUsuario({ perfil, refId, setToken }) {
   const [todasOrdens, setTodasOrdens] = useState([])
@@ -25,6 +520,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
   const [osParaEditar, setOsParaEditar] = useState(null)
   const [isPixOpen, setIsPixOpen] = useState(false)
   const [osParaPix, setOsParaPix] = useState(null)
+  const [osParaRastrear, setOsParaRastrear] = useState(null)
   
   const [lojas, setLojas] = useState([])
   const [clientes, setClientes] = useState([])
@@ -50,6 +546,22 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
   }
 
   useEffect(() => { carregarOrdens(); carregarCadastros() }, [perfil, refId])
+
+  // Rastreamento contínuo em segundo plano da localização do Medidor
+  useEffect(() => {
+    if (perfil !== 'MEDIDOR' || !refId || !navigator.geolocation) return;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        axios.put(`/api/medidores/${refId}/localizacao`, {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude
+        }).catch(() => {});
+      },
+      (err) => console.log('GPS watch:', err.message),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [perfil, refId]);
 
   const formatarMoeda = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   const formatarData = (d) => { if (!d) return '-'; return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) }
@@ -213,9 +725,19 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
                   {medidorPendentes.length === 0 && <div className="col-span-full py-12 text-center text-slate-500 font-medium">Nenhuma demanda com documentos completos no momento.</div>}
                 </div>
               ) : (
-                <div className="relative w-full h-[60vh] bg-slate-900 rounded-3xl border border-slate-800 flex items-center justify-center text-slate-500 font-bold shadow-inner">
-                   📡 Radar interativo em desenvolvimento...
-                </div>
+                <RadarMapaInterativo
+                  medidor={medidores.find(m => m.id === refId)}
+                  lojas={lojas}
+                  demandasPendentes={medidorPendentes}
+                  ordensEmRota={medidorEmRota}
+                  aceitarDemanda={aceitarDemanda}
+                  formatarMoeda={formatarMoeda}
+                  onAtualizarLocalizacao={(lat, lon) => {
+                    if (refId) {
+                      axios.put(`/api/medidores/${refId}/localizacao`, { latitude: lat, longitude: lon }).catch(() => {});
+                    }
+                  }}
+                />
               )}
             </div>
           )}
@@ -379,6 +901,15 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
                         </div>
                       </>
                     )}
+                    {(os.status === 'EM_ROTA' || os.status === 'NO_LOCAL') && (
+                      <button 
+                        onClick={() => setOsParaRastrear(os)}
+                        className="w-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+                      >
+                        <span>🛵</span> Rastrear Medidor no Mapa
+                      </button>
+                    )}
+
                     <button onClick={() => gerarPDF(os)} className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2 rounded-xl text-xs font-bold transition-all">📄 Gerar PDF da OS</button>
                     
                     <button 
@@ -425,6 +956,15 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
         os={osParaPix} 
         onPagamentoConfirmado={() => { carregarOrdens() }} 
       />
+
+      {/* MODAL DE RASTREIO DE MEDIDOR AO VIVO */}
+      {osParaRastrear && (
+        <ModalRastreioLoja
+          os={osParaRastrear}
+          onClose={() => setOsParaRastrear(null)}
+          formatarMoeda={formatarMoeda}
+        />
+      )}
     </div>
   )
 }

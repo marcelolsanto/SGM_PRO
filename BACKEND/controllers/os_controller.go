@@ -102,6 +102,10 @@ func CriarOrdem(c *fiber.Ctx) error {
 	osData.TempoDeslocamentoMin = minTotal
 	osData.OrigemDeslocamento = endOrigem
 
+	latObra, lonObra, _ := utils.GeocodificarEndereco(osData.EnderecoObra)
+	osData.LatitudeObra = latObra
+	osData.LongitudeObra = lonObra
+
 	if osData.Urgencia {
 		osData.TaxaDeslocamento *= 2
 	}
@@ -194,6 +198,10 @@ func AtualizarOrdem(c *fiber.Ctx) error {
 	osAtualizada.KmDeslocamento = kmTotal
 	osAtualizada.TempoDeslocamentoMin = minTotal
 	osAtualizada.OrigemDeslocamento = endOrigem
+
+	latObra, lonObra, _ := utils.GeocodificarEndereco(osAtualizada.EnderecoObra)
+	osAtualizada.LatitudeObra = latObra
+	osAtualizada.LongitudeObra = lonObra
 
 	if osAtualizada.Urgencia {
 		osAtualizada.TaxaDeslocamento *= 2

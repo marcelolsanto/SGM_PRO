@@ -1,5 +1,126 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import axios from 'axios'
+
+function calcularDistanciaKm(lat1, lon1, lat2, lon2) {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+  const R = 6371;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return parseFloat((R * c).toFixed(1));
+}
+
+function MapaRastreioCliente({ os }) {
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const layersRef = useRef(null);
+  const [posMedidor, setPosMedidor] = useState({
+    lat: Number(os?.medidor?.latitude) || -23.550520,
+    lon: Number(os?.medidor?.longitude) || -46.633308
+  });
+
+  useEffect(() => {
+    if (!os?.medidor_id) return;
+    const buscarLocalizacao = () => {
+      axios.get(`/api/medidores/${os.medidor_id}/localizacao`).then(res => {
+        if (res.data?.latitude && res.data?.longitude) {
+          setPosMedidor({ lat: Number(res.data.latitude), lon: Number(res.data.longitude) });
+        }
+      }).catch(() => {});
+    };
+    buscarLocalizacao();
+    const interval = setInterval(buscarLocalizacao, 6000);
+    return () => clearInterval(interval);
+  }, [os?.medidor_id]);
+
+  useEffect(() => {
+    if (!mapRef.current || !window.L) return;
+
+    const latObra = Number(os?.latitude_obra) || -23.548900;
+    const lonObra = Number(os?.longitude_obra) || -46.638800;
+    const latMed = posMedidor.lat;
+    const lonMed = posMedidor.lon;
+
+    if (!mapInstanceRef.current) {
+      const map = window.L.map(mapRef.current, {
+        center: [latObra, lonObra],
+        zoom: 13,
+        zoomControl: false
+      });
+
+      window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 19
+      }).addTo(map);
+
+      window.L.control.zoom({ position: 'bottomright' }).addTo(map);
+      layersRef.current = window.L.layerGroup().addTo(map);
+      mapInstanceRef.current = map;
+    }
+
+    const map = mapInstanceRef.current;
+    const L = window.L;
+
+    if (layersRef.current) {
+      layersRef.current.clearLayers();
+    }
+
+    const iconeObra = L.divIcon({
+      className: 'cliente-casa-icon',
+      html: `<div style="width: 36px; height: 36px; background: #059669; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">🏠</div>`,
+      iconSize: [36, 36],
+      iconAnchor: [18, 18]
+    });
+    L.marker([latObra, lonObra], { icon: iconeObra }).addTo(layersRef.current).bindPopup(`<b>Seu Imóvel</b><br/>${os?.endereco_obra || ''}`);
+
+    const iconeMed = L.divIcon({
+      className: 'cliente-med-icon',
+      html: `<div style="width: 38px; height: 38px; background: #2563eb; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 4px 14px rgba(37,99,235,0.5);">🛵</div>`,
+      iconSize: [38, 38],
+      iconAnchor: [19, 19]
+    });
+    L.marker([latMed, lonMed], { icon: iconeMed }).addTo(layersRef.current).bindPopup(`<b>${os?.medidor?.nome_completo || 'Medidor'}</b><br/>Profissional a caminho`);
+
+    L.polyline([[latMed, lonMed], [latObra, lonObra]], { color: '#2563eb', weight: 3, dashArray: '6, 6' }).addTo(layersRef.current);
+    map.fitBounds([[latMed, lonMed], [latObra, lonObra]], { padding: [30, 30], maxZoom: 15 });
+
+  }, [os, posMedidor]);
+
+  const dist = calcularDistanciaKm(posMedidor.lat, posMedidor.lon, Number(os?.latitude_obra) || -23.548900, Number(os?.longitude_obra) || -46.638800);
+
+  return (
+    <div className="mt-6 bg-slate-50 border-2 border-blue-500/30 rounded-3xl overflow-hidden shadow-lg w-full text-left">
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 text-white flex justify-between items-center">
+        <div>
+          <span className="text-[10px] font-black uppercase tracking-widest opacity-90">Rastreamento em Tempo Real</span>
+          <p className="font-black text-sm flex items-center gap-1.5 mt-0.5">
+            <span>🛵</span> {os?.status === 'NO_LOCAL' ? 'Medidor no Local!' : 'Medidor a Caminho!'}
+          </p>
+        </div>
+        <div className="bg-white/20 backdrop-blur px-3 py-1 rounded-xl text-xs font-mono font-bold">
+          ~{dist} km
+        </div>
+      </div>
+
+      <div className="h-60 w-full relative">
+        <div ref={mapRef} className="w-full h-full" />
+      </div>
+
+      <div className="p-3 bg-white text-xs text-slate-500 flex justify-between items-center border-t border-slate-100">
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          GPS Atualizado ao Vivo
+        </span>
+        <span className="font-semibold text-slate-700">{os?.medidor?.nome_completo}</span>
+      </div>
+    </div>
+  );
+}
 
 const PRESETS_ITENS = {
   'Cozinha / Área Gourmet': [
@@ -205,6 +326,10 @@ export default function MagicLink({ token }) {
                   </div>
                 </div>
               </div>
+            )}
+
+            {os?.medidor && (os?.status === 'EM_ROTA' || os?.status === 'NO_LOCAL') && (
+              <MapaRastreioCliente os={os} />
             )}
           </div>
         ) : (

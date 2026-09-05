@@ -7,8 +7,10 @@ type OrdemServico struct {
 	LojaID           uint       `gorm:"column:loja_id" json:"loja_id"`
 	MedidorID        *uint      `gorm:"column:medidor_id" json:"medidor_id"`
 	ClienteNome      string     `gorm:"column:cliente_nome" json:"cliente_nome"`
-	EnderecoObra     string     `gorm:"column:endereco_obra" json:"endereco_obra"`
-	Status           string     `gorm:"column:status;default:'PENDENTE_LOJA'" json:"status"`
+	EnderecoObra          string     `gorm:"column:endereco_obra" json:"endereco_obra"`
+	LatitudeObra          float64    `gorm:"column:latitude_obra;default:0" json:"latitude_obra"`
+	LongitudeObra         float64    `gorm:"column:longitude_obra;default:0" json:"longitude_obra"`
+	Status                string     `gorm:"column:status;default:'PENDENTE_LOJA'" json:"status"`
 	Urgencia         bool       `gorm:"column:urgencia" json:"urgencia"`
 	ValorBaseM2      float64    `gorm:"column:valor_base_m2" json:"valor_base_m2"`
 	TaxaDeslocamento      float64    `gorm:"column:taxa_deslocamento" json:"taxa_deslocamento"`

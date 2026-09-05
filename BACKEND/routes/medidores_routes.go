@@ -11,5 +11,7 @@ func RegisterMedidorRoutes(api fiber.Router) {
 	api.Get("/medidores", controllers.ListarMedidores)
 	api.Get("/medidores/:id", controllers.ObterMedidor)
 	api.Put("/medidores/:id", controllers.AtualizarMedidor)
+	api.Put("/medidores/:id/localizacao", controllers.AtualizarLocalizacaoMedidor)
+	api.Get("/medidores/:id/localizacao", controllers.ObterLocalizacaoMedidor)
 	api.Delete("/medidores/:id", controllers.DeletarMedidor)
 }
