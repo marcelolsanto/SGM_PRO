@@ -111,24 +111,7 @@ func CriarOrdem(c *fiber.Ctx) error {
 		custoMedidorBruto += area * taxaMedidor * comp
 	}
 
-	qtdAmbientes := len(osData.Ambientes)
-	descontoVolume := 0.0
-	if !osData.Urgencia {
-		if qtdAmbientes == 2 {
-			descontoVolume = 0.05
-		} else if qtdAmbientes == 3 {
-			descontoVolume = 0.10
-		} else if qtdAmbientes == 4 {
-			descontoVolume = 0.15
-		} else if qtdAmbientes >= 5 {
-			descontoVolume = 0.20
-		}
-	}
-
-	subTotal := (custoMedicaoBruto * (1.0 - descontoVolume)) + osData.TaxaDeslocamento
-	osData.ValorTotalOS = subTotal + (subTotal * 0.10)
-
-	// 🔥 DISCRIÇÃO DETALHADA E ADICIONAL DE URGÊNCIA (+50%) PARA O MEDIDOR
+	// 1. Mão de Obra do Medidor e Adicional de Urgência (+50%)
 	osData.MaoDeObraMedidor = custoMedidorBruto
 	if osData.Urgencia {
 		osData.AdicionalUrgencia = custoMedidorBruto * 0.50
@@ -136,6 +119,12 @@ func CriarOrdem(c *fiber.Ctx) error {
 		osData.AdicionalUrgencia = 0.0
 	}
 	osData.CustoMedidor = osData.MaoDeObraMedidor + osData.AdicionalUrgencia + osData.TaxaDeslocamento
+
+	// 2. Margem da Plataforma SGM fixada em 20% do GMV total (Repasse Medidor = 80%)
+	osData.ValorTotalOS = osData.CustoMedidor / 0.80
+	if taxaMedidor > 0 {
+		osData.ValorBaseM2 = taxaMedidor / 0.80
+	}
 
 	osData.Token = utils.GerarTokenUnico()
 	osData.Status = "PENDENTE_LOJA"
@@ -206,24 +195,7 @@ func AtualizarOrdem(c *fiber.Ctx) error {
 		custoMedidorBruto += area * taxaMedidor * comp
 	}
 
-	qtdAmbientes := len(osAtualizada.Ambientes)
-	descontoVolume := 0.0
-	if !osAtualizada.Urgencia {
-		if qtdAmbientes == 2 {
-			descontoVolume = 0.05
-		} else if qtdAmbientes == 3 {
-			descontoVolume = 0.10
-		} else if qtdAmbientes == 4 {
-			descontoVolume = 0.15
-		} else if qtdAmbientes >= 5 {
-			descontoVolume = 0.20
-		}
-	}
-
-	subTotal := (custoMedicaoBruto * (1.0 - descontoVolume)) + osAtualizada.TaxaDeslocamento
-	osAtualizada.ValorTotalOS = subTotal + (subTotal * 0.10)
-	
-	// 🔥 DISCRIÇÃO DETALHADA E ADICIONAL DE URGÊNCIA (+50%)
+	// 1. Mão de Obra do Medidor e Adicional de Urgência (+50%)
 	osAtualizada.MaoDeObraMedidor = custoMedidorBruto
 	if osAtualizada.Urgencia {
 		osAtualizada.AdicionalUrgencia = custoMedidorBruto * 0.50
@@ -231,6 +203,12 @@ func AtualizarOrdem(c *fiber.Ctx) error {
 		osAtualizada.AdicionalUrgencia = 0.0
 	}
 	osAtualizada.CustoMedidor = osAtualizada.MaoDeObraMedidor + osAtualizada.AdicionalUrgencia + osAtualizada.TaxaDeslocamento
+
+	// 2. Margem da Plataforma SGM fixada em 20% do GMV total (Repasse Medidor = 80%)
+	osAtualizada.ValorTotalOS = osAtualizada.CustoMedidor / 0.80
+	if taxaMedidor > 0 {
+		osAtualizada.ValorBaseM2 = taxaMedidor / 0.80
+	}
 
 	// Mantém propriedades vitais imutáveis
 	osAtualizada.ID = osAntiga.ID

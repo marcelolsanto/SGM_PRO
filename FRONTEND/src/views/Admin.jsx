@@ -16,7 +16,7 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
   const [usuarios, setUsuarios] = useState([])
 
   const [formLoja, setFormLoja] = useState({ nome_fantasia: '', cnpj: '', email: '', telefone: '', endereco: '' })
-  const [formMedidor, setFormMedidor] = useState({ nome_completo: '', cpf: '', telefone: '', taxa_por_m2: 3.50, chave_pix: '', tipo_chave_pix: 'CPF' })
+  const [formMedidor, setFormMedidor] = useState({ nome_completo: '', cpf: '', telefone: '', taxa_por_m2: 3.00, chave_pix: '', tipo_chave_pix: 'CPF' })
   const [formCliente, setFormCliente] = useState({ nome: '', cpf_cnpj: '', telefone: '', email: '' })
   const [formUsuario, setFormUsuario] = useState({ nome: '', email: '', perfil: 'LOJA', ref_id: '' })
 
@@ -42,7 +42,7 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
     setAbaAtiva(aba);
     setEditingId(null)
     setFormLoja({ nome_fantasia: '', cnpj: '', email: '', telefone: '', endereco: '' })
-    setFormMedidor({ nome_completo: '', cpf: '', telefone: '', taxa_por_m2: 3.50, chave_pix: '', tipo_chave_pix: 'CPF' })
+    setFormMedidor({ nome_completo: '', cpf: '', telefone: '', taxa_por_m2: 3.00, chave_pix: '', tipo_chave_pix: 'CPF' })
     setFormCliente({ nome: '', cpf_cnpj: '', telefone: '', email: '' })
     setFormUsuario({ nome: '', email: '', perfil: 'LOJA', ref_id: '' })
   }
