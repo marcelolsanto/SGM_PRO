@@ -389,30 +389,90 @@ func MarcarChegada(c *fiber.Ctx) error {
 	return c.Status(200).JSON(os)
 }
 
+type EntregaDocumentosPayload struct {
+	CaminhoMedicao   string `json:"caminho_medicao"`
+	MaterialMedicao  string `json:"material_medicao"`
+	FotosMedicao     string `json:"fotos_medicao"`
+	ArquivoPromob    string `json:"arquivo_promob"`
+	DesenhoCroqui    string `json:"desenho_croqui"`
+	DocumentosExtras string `json:"documentos_extras"`
+}
+
 func EntregarMedicao(c *fiber.Ctx) error {
 	var os models.OrdemServico
 	if err := config.DB.First(&os, c.Params("id")).Error; err != nil {
 		return c.Status(404).JSON(fiber.Map{"erro": "Ordem não encontrada"})
 	}
 
-	type EntregaPayload struct {
-		CaminhoMedicao  string `json:"caminho_medicao"`
-		MaterialMedicao string `json:"material_medicao"`
-	}
-
-	var payload EntregaPayload
+	var payload EntregaDocumentosPayload
 	if err := c.BodyParser(&payload); err != nil {
 		return c.Status(400).JSON(fiber.Map{"erro": "Dados de entrega inválidos"})
 	}
 
-	os.CaminhoMedicao = payload.CaminhoMedicao
-	os.MaterialMedicao = payload.MaterialMedicao
+	if payload.CaminhoMedicao != "" {
+		os.CaminhoMedicao = payload.CaminhoMedicao
+	}
+	if payload.MaterialMedicao != "" {
+		os.MaterialMedicao = payload.MaterialMedicao
+	}
+	if payload.FotosMedicao != "" {
+		os.FotosMedicao = payload.FotosMedicao
+	}
+	if payload.ArquivoPromob != "" {
+		os.ArquivoPromob = payload.ArquivoPromob
+	}
+	if payload.DesenhoCroqui != "" {
+		os.DesenhoCroqui = payload.DesenhoCroqui
+	}
+	if payload.DocumentosExtras != "" {
+		os.DocumentosExtras = payload.DocumentosExtras
+	}
+
 	os.Status = "CONCLUIDO"
-	now := time.Now()
-	os.DataConclusao = &now
+	if os.DataConclusao == nil {
+		now := time.Now()
+		os.DataConclusao = &now
+	}
 	config.DB.Save(&os)
 
 	return c.Status(200).JSON(os)
+}
+
+func AtualizarDocumentosMedicao(c *fiber.Ctx) error {
+	var os models.OrdemServico
+	if err := config.DB.First(&os, c.Params("id")).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"erro": "Ordem não encontrada"})
+	}
+
+	var payload EntregaDocumentosPayload
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(fiber.Map{"erro": "Dados inválidos"})
+	}
+
+	if payload.CaminhoMedicao != "" {
+		os.CaminhoMedicao = payload.CaminhoMedicao
+	}
+	if payload.MaterialMedicao != "" {
+		os.MaterialMedicao = payload.MaterialMedicao
+	}
+	if payload.FotosMedicao != "" {
+		os.FotosMedicao = payload.FotosMedicao
+	}
+	if payload.ArquivoPromob != "" {
+		os.ArquivoPromob = payload.ArquivoPromob
+	}
+	if payload.DesenhoCroqui != "" {
+		os.DesenhoCroqui = payload.DesenhoCroqui
+	}
+	if payload.DocumentosExtras != "" {
+		os.DocumentosExtras = payload.DocumentosExtras
+	}
+
+	config.DB.Save(&os)
+	return c.Status(200).JSON(fiber.Map{
+		"mensagem": "Documentos de medição atualizados com sucesso!",
+		"os":       os,
+	})
 }
 
 func DeletarOrdem(c *fiber.Ctx) error {

@@ -24,6 +24,10 @@ type OrdemServico struct {
 	Token            string     `gorm:"column:token" json:"token"`
 	MaterialMedicao  string     `gorm:"column:material_medicao" json:"material_medicao"`
 	CaminhoMedicao   string     `gorm:"column:caminho_medicao" json:"caminho_medicao"`
+	FotosMedicao     string     `gorm:"column:fotos_medicao;type:text" json:"fotos_medicao"`
+	ArquivoPromob    string     `gorm:"column:arquivo_promob" json:"arquivo_promob"`
+	DesenhoCroqui    string     `gorm:"column:desenho_croqui" json:"desenho_croqui"`
+	DocumentosExtras string     `gorm:"column:documentos_extras;type:text" json:"documentos_extras"`
 	TermosAceitos    bool       `gorm:"column:termos_aceitos" json:"termos_aceitos"`
 	StatusPagamento  string     `gorm:"column:status_pagamento;default:'PENDENTE'" json:"status_pagamento"`
 	PixCopiaECola    string     `gorm:"column:pix_copia_e_cola;type:text" json:"pix_copia_e_cola"`

@@ -12,5 +12,6 @@ func RegisterRotasRoutes(api fiber.Router) {
 	api.Get("/rotas/meu-roteiro", controllers.ObterMeuRoteiro)
 	api.Put("/rotas/reordenar", controllers.ReordenarRoteiro)
 	api.Post("/rotas/adicionar/:id", controllers.AdicionarAoRoteiro)
+	api.Put("/rotas/remover/:id", controllers.RemoverOuRecusarParada)
 	api.Put("/rotas/otimizar", controllers.OtimizarPorProximidade)
 }

@@ -420,3 +420,25 @@ func calcularDistanciaEuclidiana(lat1, lon1, lat2, lon2 float64) float64 {
 	dLon := (lon2 - lon1) * 111.0 * math.Cos(lat1*math.Pi/180.0)
 	return math.Sqrt(dLat*dLat + dLon*dLon)
 }
+
+// RemoverOuRecusarParada retira a ordem do roteiro do medidor ou recusa uma demanda pendente
+func RemoverOuRecusarParada(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var os models.OrdemServico
+	if err := config.DB.First(&os, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"erro": "Ordem não encontrada"})
+	}
+
+	// Volta a ordem para PENDENTE_LOJA e desassocia do medidor
+	config.DB.Model(&os).Updates(map[string]interface{}{
+		"status":     "PENDENTE_LOJA",
+		"medidor_id": nil,
+		"ordem_rota": 0,
+	})
+
+	return c.JSON(fiber.Map{
+		"mensagem": "Ordem retirada do roteiro com sucesso!",
+		"os_id":    os.ID,
+	})
+}
+
