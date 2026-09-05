@@ -246,24 +246,30 @@ func ObterMeuRoteiro(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"medidor_id":           medidorID,
-		"total_paradas":        len(paradas),
-		"total_km":             rotaMulti.TotalKm,
-		"total_tempo_transito": rotaMulti.TotalDuracaoMin,
-		"total_tempo_medicoes": rotaMulti.TotalTempoObraMin,
-		"total_tempo_jornada":  rotaMulti.TotalDuracaoMin + rotaMulti.TotalTempoObraMin,
-		"total_repasse":        totalRepasse,
-		"total_tarifa_desloc":  rotaMulti.TotalTarifa,
+		"medidor_id":                medidorID,
+		"total_paradas":             len(paradas),
+		"total_km":                  rotaMulti.TotalKm,
+		"total_distancia_km":        rotaMulti.TotalKm,
+		"total_tempo_transito":      rotaMulti.TotalDuracaoMin,
+		"duracao_transito_min":      rotaMulti.TotalDuracaoMin,
+		"total_tempo_medicoes":      rotaMulti.TotalTempoObraMin,
+		"duracao_medicao_min":       rotaMulti.TotalTempoObraMin,
+		"total_tempo_jornada":       rotaMulti.TotalDuracaoMin + rotaMulti.TotalTempoObraMin,
+		"duracao_total_min":         rotaMulti.TotalDuracaoMin + rotaMulti.TotalTempoObraMin,
+		"total_repasse":             totalRepasse,
+		"ganho_total_repasse":       totalRepasse,
+		"total_tarifa_desloc":       rotaMulti.TotalTarifa,
 		"origem": fiber.Map{
 			"lat":       origemLat,
 			"lon":       origemLon,
 			"descricao": "Sua Localização (Medidor)",
 		},
-		"paradas":         paradas,
-		"trechos":         rotaMulti.Trechos,
-		"cronograma":      cronograma,
-		"coordenadas":     rotaMulti.Coordenadas,
-		"google_maps_url": rotaMulti.GoogleMapsURL,
+		"paradas":                    paradas,
+		"trechos":                    rotaMulti.Trechos,
+		"cronograma":                 cronograma,
+		"coordenadas":                rotaMulti.Coordenadas,
+		"google_maps_url":            rotaMulti.GoogleMapsURL,
+		"google_maps_multi_stop_url": rotaMulti.GoogleMapsURL,
 	})
 }
 
@@ -271,17 +277,25 @@ func ObterMeuRoteiro(c *fiber.Ctx) error {
 func ReordenarRoteiro(c *fiber.Ctx) error {
 	type Payload struct {
 		Sequencia []uint `json:"sequencia"`
+		OrdemIDs  []uint `json:"ordem_ids"`
 	}
 	var p Payload
-	if err := c.BodyParser(&p); err != nil || len(p.Sequencia) == 0 {
-		return c.Status(400).JSON(fiber.Map{"erro": "Sequência de IDs inválida."})
+	if err := c.BodyParser(&p); err != nil {
+		return c.Status(400).JSON(fiber.Map{"erro": "Payload inválido."})
+	}
+	ids := p.Sequencia
+	if len(ids) == 0 {
+		ids = p.OrdemIDs
+	}
+	if len(ids) == 0 {
+		return c.Status(400).JSON(fiber.Map{"erro": "Nenhum ID de OS informado para reordenação."})
 	}
 
-	for idx, osID := range p.Sequencia {
+	for idx, osID := range ids {
 		config.DB.Model(&models.OrdemServico{}).Where("id = ?", osID).Update("ordem_rota", idx+1)
 	}
 
-	return c.JSON(fiber.Map{"mensagem": "Roteiro reordenado com sucesso!", "sequencia": p.Sequencia})
+	return c.JSON(fiber.Map{"mensagem": "Roteiro reordenado com sucesso!", "sequencia": ids})
 }
 
 // AdicionarAoRoteiro aceita uma OS e a adiciona à rota de hoje do medidor
@@ -327,6 +341,33 @@ func OtimizarPorProximidade(c *fiber.Ctx) error {
 
 	origemLat, _ := strconv.ParseFloat(c.Query("origemLat"), 64)
 	origemLon, _ := strconv.ParseFloat(c.Query("origemLon"), 64)
+	if origemLat == 0 {
+		origemLat, _ = strconv.ParseFloat(c.Query("lat"), 64)
+	}
+	if origemLon == 0 {
+		origemLon, _ = strconv.ParseFloat(c.Query("lon"), 64)
+	}
+
+	type OtimizarBody struct {
+		Lat       float64 `json:"lat"`
+		Lon       float64 `json:"lon"`
+		OrigemLat float64 `json:"origemLat"`
+		OrigemLon float64 `json:"origemLon"`
+	}
+	var b OtimizarBody
+	if err := c.BodyParser(&b); err == nil {
+		if b.Lat != 0 {
+			origemLat = b.Lat
+		} else if b.OrigemLat != 0 {
+			origemLat = b.OrigemLat
+		}
+		if b.Lon != 0 {
+			origemLon = b.Lon
+		} else if b.OrigemLon != 0 {
+			origemLon = b.OrigemLon
+		}
+	}
+
 	if origemLat == 0 && origemLon == 0 {
 		origemLat = -15.779017
 		origemLon = -47.997900
