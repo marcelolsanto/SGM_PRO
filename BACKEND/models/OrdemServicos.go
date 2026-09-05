@@ -11,8 +11,11 @@ type OrdemServico struct {
 	Status           string     `gorm:"column:status;default:'PENDENTE_LOJA'" json:"status"`
 	Urgencia         bool       `gorm:"column:urgencia" json:"urgencia"`
 	ValorBaseM2      float64    `gorm:"column:valor_base_m2" json:"valor_base_m2"`
-	TaxaDeslocamento float64    `gorm:"column:taxa_deslocamento" json:"taxa_deslocamento"`
-	MaoDeObraMedidor float64    `gorm:"column:mao_de_obra_medidor;default:0" json:"mao_de_obra_medidor"`
+	TaxaDeslocamento      float64    `gorm:"column:taxa_deslocamento" json:"taxa_deslocamento"`
+	KmDeslocamento        float64    `gorm:"column:km_deslocamento;default:0" json:"km_deslocamento"`
+	TempoDeslocamentoMin  int        `gorm:"column:tempo_deslocamento_min;default:0" json:"tempo_deslocamento_min"`
+	OrigemDeslocamento    string     `gorm:"column:origem_deslocamento" json:"origem_deslocamento"`
+	MaoDeObraMedidor      float64    `gorm:"column:mao_de_obra_medidor;default:0" json:"mao_de_obra_medidor"`
 	AdicionalUrgencia float64   `gorm:"column:adicional_urgencia;default:0" json:"adicional_urgencia"`
 	ValorTotalOS     float64    `gorm:"column:valor_total_os" json:"valor_total_os"`
 	CustoMedidor     float64    `gorm:"column:custo_medidor" json:"custo_medidor"`

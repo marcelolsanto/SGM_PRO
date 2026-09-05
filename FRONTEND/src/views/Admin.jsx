@@ -16,7 +16,7 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
   const [usuarios, setUsuarios] = useState([])
 
   const [formLoja, setFormLoja] = useState({ nome_fantasia: '', cnpj: '', email: '', telefone: '', endereco: '' })
-  const [formMedidor, setFormMedidor] = useState({ nome_completo: '', cpf: '', telefone: '', taxa_por_m2: 3.00, chave_pix: '', tipo_chave_pix: 'CPF' })
+  const [formMedidor, setFormMedidor] = useState({ nome_completo: '', cpf: '', telefone: '', endereco: '', taxa_por_m2: 3.00, chave_pix: '', tipo_chave_pix: 'CPF' })
   const [formCliente, setFormCliente] = useState({ nome: '', cpf_cnpj: '', telefone: '', email: '' })
   const [formUsuario, setFormUsuario] = useState({ nome: '', email: '', perfil: 'LOJA', ref_id: '' })
 
@@ -42,7 +42,7 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
     setAbaAtiva(aba);
     setEditingId(null)
     setFormLoja({ nome_fantasia: '', cnpj: '', email: '', telefone: '', endereco: '' })
-    setFormMedidor({ nome_completo: '', cpf: '', telefone: '', taxa_por_m2: 3.00, chave_pix: '', tipo_chave_pix: 'CPF' })
+    setFormMedidor({ nome_completo: '', cpf: '', telefone: '', endereco: '', taxa_por_m2: 3.00, chave_pix: '', tipo_chave_pix: 'CPF' })
     setFormCliente({ nome: '', cpf_cnpj: '', telefone: '', email: '' })
     setFormUsuario({ nome: '', email: '', perfil: 'LOJA', ref_id: '' })
   }
@@ -126,6 +126,8 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
                   </div>
                 </div>
 
+                <input placeholder="Endereço Base / Cidade (Ex: Av Paulista, 1000, São Paulo - SP)" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-blue-500 text-xs" value={formMedidor.endereco || ''} onChange={e => setFormMedidor({...formMedidor, endereco: e.target.value})} />
+
                 <div><label className="block text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 ml-1">Repasse (R$ por m²)</label><input required type="number" step="0.01" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-blue-500 font-mono" value={formMedidor.taxa_por_m2} onChange={e => setFormMedidor({...formMedidor, taxa_por_m2: e.target.value})} /></div>
                 <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">{editingId ? 'Atualizar Medidor' : 'Aprovar Medidor'}</button>
               </form>
@@ -197,6 +199,9 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
                   <p className="text-xs text-slate-500">📱 WhatsApp: {med.telefone || 'Não informado'}</p>
                   <p className="text-xs text-slate-400 mt-1 flex items-center gap-1 font-mono">
                     <span className="text-emerald-400 font-bold">⚡ PIX ({med.tipo_chave_pix || 'CPF'}):</span> {med.chave_pix ? med.chave_pix : <span className="text-amber-500 text-[10px]">Pendente</span>}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
+                    <span>📍 Base:</span> <span className="text-slate-300 font-medium">{med.endereco || 'Padrão da loja'}</span>
                   </p>
                 </div>
               </div>

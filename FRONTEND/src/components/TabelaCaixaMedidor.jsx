@@ -61,7 +61,12 @@ export default function TabelaCaixaMedidor({ medidorHistorico, formatarMoeda, fo
                     <span className="text-slate-600">-</span>
                   )}
                 </td>
-                <td className="p-4 font-mono text-xs text-slate-300">+{formatarMoeda(os.taxa_deslocamento)}</td>
+                <td className="p-4 font-mono text-xs text-slate-300">
+                  <p className="font-bold">+{formatarMoeda(os.taxa_deslocamento)}</p>
+                  {os.km_deslocamento > 0 && (
+                    <p className="text-[10px] text-slate-500 font-sans">🚗 {os.km_deslocamento}km • {os.tempo_deslocamento_min}min</p>
+                  )}
+                </td>
                 <td className="p-4 font-black text-emerald-400 font-mono text-sm">{formatarMoeda(os.custo_medidor)}</td>
                 <td className="p-4 text-right"><a href={os.caminho_medicao} target="_blank" rel="noreferrer" className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors border border-slate-700">Ver PDF</a></td>
               </tr>

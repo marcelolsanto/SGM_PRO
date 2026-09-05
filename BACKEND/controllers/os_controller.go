@@ -78,12 +78,30 @@ func CriarOrdem(c *fiber.Ctx) error {
 
 	var loja models.Loja
 	config.DB.First(&loja, osData.LojaID)
-	end := loja.Endereco
-	if end == "" {
-		end = "Praça da Sé, São Paulo, SP"
+	endOrigem := loja.Endereco
+	if endOrigem == "" {
+		endOrigem = "Praça da Sé, São Paulo, SP"
 	}
 
-	osData.TaxaDeslocamento = utils.CalcularTaxaGoogleMaps(end, osData.EnderecoObra)
+	taxaMedidor := 3.50
+	if osData.MedidorID != nil {
+		var m models.Medidor
+		if err := config.DB.First(&m, *osData.MedidorID).Error; err == nil {
+			if m.TaxaPorM2 > 0 {
+				taxaMedidor = m.TaxaPorM2
+			}
+			if m.Endereco != "" {
+				endOrigem = m.Endereco
+			}
+		}
+	}
+
+	taxaDesloc, kmTotal, minTotal := utils.CalcularDeslocamentoDinamico(endOrigem, osData.EnderecoObra)
+	osData.TaxaDeslocamento = taxaDesloc
+	osData.KmDeslocamento = kmTotal
+	osData.TempoDeslocamentoMin = minTotal
+	osData.OrigemDeslocamento = endOrigem
+
 	if osData.Urgencia {
 		osData.TaxaDeslocamento *= 2
 	}
@@ -91,15 +109,6 @@ func CriarOrdem(c *fiber.Ctx) error {
 	osData.ValorBaseM2 = 5.72
 	custoMedicaoBruto := 0.0
 	custoMedidorBruto := 0.0
-	taxaMedidor := 3.50
-
-	if osData.MedidorID != nil {
-		var m models.Medidor
-		config.DB.First(&m, *osData.MedidorID)
-		if m.TaxaPorM2 > 0 {
-			taxaMedidor = m.TaxaPorM2
-		}
-	}
 
 	for i := range osData.Ambientes {
 		if osData.Ambientes[i].Complexidade < 1.0 {
@@ -162,12 +171,30 @@ func AtualizarOrdem(c *fiber.Ctx) error {
 
 	var loja models.Loja
 	config.DB.First(&loja, osAtualizada.LojaID)
-	end := loja.Endereco
-	if end == "" {
-		end = "Praça da Sé, São Paulo, SP"
+	endOrigem := loja.Endereco
+	if endOrigem == "" {
+		endOrigem = "Praça da Sé, São Paulo, SP"
 	}
 
-	osAtualizada.TaxaDeslocamento = utils.CalcularTaxaGoogleMaps(end, osAtualizada.EnderecoObra)
+	taxaMedidor := 3.50
+	if osAntiga.MedidorID != nil {
+		var m models.Medidor
+		if err := config.DB.First(&m, *osAntiga.MedidorID).Error; err == nil {
+			if m.TaxaPorM2 > 0 {
+				taxaMedidor = m.TaxaPorM2
+			}
+			if m.Endereco != "" {
+				endOrigem = m.Endereco
+			}
+		}
+	}
+
+	taxaDesloc, kmTotal, minTotal := utils.CalcularDeslocamentoDinamico(endOrigem, osAtualizada.EnderecoObra)
+	osAtualizada.TaxaDeslocamento = taxaDesloc
+	osAtualizada.KmDeslocamento = kmTotal
+	osAtualizada.TempoDeslocamentoMin = minTotal
+	osAtualizada.OrigemDeslocamento = endOrigem
+
 	if osAtualizada.Urgencia {
 		osAtualizada.TaxaDeslocamento *= 2
 	}
@@ -175,15 +202,6 @@ func AtualizarOrdem(c *fiber.Ctx) error {
 	osAtualizada.ValorBaseM2 = 5.72
 	custoMedicaoBruto := 0.0
 	custoMedidorBruto := 0.0
-	taxaMedidor := 3.50
-
-	if osAntiga.MedidorID != nil {
-		var m models.Medidor
-		config.DB.First(&m, *osAntiga.MedidorID)
-		if m.TaxaPorM2 > 0 {
-			taxaMedidor = m.TaxaPorM2
-		}
-	}
 
 	for i := range osAtualizada.Ambientes {
 		if osAtualizada.Ambientes[i].Complexidade < 1.0 {
@@ -304,13 +322,18 @@ func PegarDemanda(c *fiber.Ctx) error {
 			}
 			custoBruto += amb.AreaEstimadaM2 * taxa * comp
 		}
-		os.MaoDeObraMedidor = custoBruto
-		if os.Urgencia {
-			os.AdicionalUrgencia = custoBruto * 0.50
-		} else {
-			os.AdicionalUrgencia = 0.0
+		if m.Endereco != "" {
+			taxaDesloc, kmTotal, minTotal := utils.CalcularDeslocamentoDinamico(m.Endereco, os.EnderecoObra)
+			os.TaxaDeslocamento = taxaDesloc
+			os.KmDeslocamento = kmTotal
+			os.TempoDeslocamentoMin = minTotal
+			os.OrigemDeslocamento = m.Endereco
+			if os.Urgencia {
+				os.TaxaDeslocamento *= 2
+			}
 		}
 		os.CustoMedidor = os.MaoDeObraMedidor + os.AdicionalUrgencia + os.TaxaDeslocamento
+		os.ValorTotalOS = os.CustoMedidor / 0.80
 	}
 
 	config.DB.Save(&os)

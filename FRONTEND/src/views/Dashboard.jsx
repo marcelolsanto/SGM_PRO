@@ -228,7 +228,14 @@ export default function Dashboard() {
                         <span className="text-slate-600">-</span>
                       )}
                     </td>
-                    <td className="p-3 text-right font-mono text-slate-300">+{formatarMoeda(os.taxa_deslocamento)}</td>
+                    <td className="p-3 text-right font-mono text-slate-300">
+                      <span>+{formatarMoeda(os.taxa_deslocamento)}</span>
+                      {os.km_deslocamento > 0 && (
+                        <span className="block text-[9px] text-slate-500 font-sans">
+                          🚗 {os.km_deslocamento}km ({os.tempo_deslocamento_min}m)
+                        </span>
+                      )}
+                    </td>
                     <td className="p-3 text-right font-mono font-bold text-red-400">-{formatarMoeda(os.custo_medidor)}</td>
                     <td className="p-3 text-right font-mono">
                       <span className="font-bold text-emerald-400">{formatarMoeda(margem)}</span>

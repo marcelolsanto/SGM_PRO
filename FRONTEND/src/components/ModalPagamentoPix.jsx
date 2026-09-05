@@ -181,8 +181,15 @@ export default function ModalPagamentoPix({ isOpen, onClose, os, onPagamentoConf
                       </div>
                     )}
 
-                    <div className="flex justify-between items-center">
-                      <span>• Auxílio Deslocamento (Gasolina/Trajeto):</span>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span>• Deslocamento Dinâmico (Estilo Uber):</span>
+                        {pixData?.split?.km_deslocamento > 0 && (
+                          <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                            🚗 {pixData.split.km_deslocamento} km • ~{pixData.split.tempo_deslocamento_min} min (Ida/Volta)
+                          </p>
+                        )}
+                      </div>
                       <span className="font-mono text-slate-300">
                         +{formatarMoeda(pixData?.split?.taxa_deslocamento)}
                       </span>
