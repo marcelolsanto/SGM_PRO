@@ -31,7 +31,10 @@ export default function TabelaCaixaMedidor({ medidorHistorico, formatarMoeda, fo
             <th className="p-4 text-[10px] uppercase font-black tracking-widest text-slate-500 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('data_aceite')}>Início {sortConfig.key==='data_aceite' && (sortConfig.direction==='asc'?'▲':'▼')}</th>
             <th className="p-4 text-[10px] uppercase font-black tracking-widest text-slate-500 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('data_conclusao')}>Entrega {sortConfig.key==='data_conclusao' && (sortConfig.direction==='asc'?'▲':'▼')}</th>
             <th className="p-4 text-[10px] uppercase font-black tracking-widest text-slate-500 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('prazo')}>SLA (Prazo) {sortConfig.key==='prazo' && (sortConfig.direction==='asc'?'▲':'▼')}</th>
-            <th className="p-4 text-[10px] uppercase font-black tracking-widest text-slate-500 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('custo_medidor')}>Valor OS {sortConfig.key==='custo_medidor' && (sortConfig.direction==='asc'?'▲':'▼')}</th>
+            <th className="p-4 text-[10px] uppercase font-black tracking-widest text-slate-500">Mão de Obra (m²)</th>
+            <th className="p-4 text-[10px] uppercase font-black tracking-widest text-slate-500">Urgência (+50%)</th>
+            <th className="p-4 text-[10px] uppercase font-black tracking-widest text-slate-500">Deslocamento</th>
+            <th className="p-4 text-[10px] uppercase font-black tracking-widest text-emerald-400 cursor-pointer hover:text-emerald-300 transition-colors" onClick={() => handleSort('custo_medidor')}>Total a Receber {sortConfig.key==='custo_medidor' && (sortConfig.direction==='asc'?'▲':'▼')}</th>
             <th className="p-4 text-[10px] uppercase font-black tracking-widest text-slate-500 text-right">Comprovante</th>
           </tr>
         </thead>
@@ -40,6 +43,8 @@ export default function TabelaCaixaMedidor({ medidorHistorico, formatarMoeda, fo
             const sla = calcularSLA(os)
             const dataInicio = os.data_aceite ? os.data_aceite : os.criado_em
             const dataFim = os.data_conclusao || new Date(new Date(dataInicio).getTime() + (sla.dias * 24 * 60 * 60 * 1000)).toISOString()
+            const maoDeObra = os.mao_de_obra_medidor || (os.custo_medidor - os.taxa_deslocamento - (os.adicional_urgencia || 0))
+            const adicionalUrg = os.adicional_urgencia || ((os.urgencia && maoDeObra > 0) ? maoDeObra * 0.5 : 0)
 
             return (
               <tr key={os.id} className="hover:bg-slate-800/50 transition-colors">
@@ -48,7 +53,16 @@ export default function TabelaCaixaMedidor({ medidorHistorico, formatarMoeda, fo
                 <td className="p-4 text-xs font-mono text-slate-300">{formatarData(dataInicio)}</td>
                 <td className="p-4 text-xs font-mono text-slate-300">{formatarData(dataFim)}</td>
                 <td className="p-4"><span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest ${sla.cor}`}>{sla.texto}</span></td>
-                <td className="p-4 font-black text-emerald-400">{formatarMoeda(os.custo_medidor)}</td>
+                <td className="p-4 font-mono text-xs text-slate-300">{formatarMoeda(maoDeObra)}</td>
+                <td className="p-4 font-mono text-xs">
+                  {(os.urgencia || adicionalUrg > 0) ? (
+                    <span className="text-amber-400 font-bold">+{formatarMoeda(adicionalUrg)}</span>
+                  ) : (
+                    <span className="text-slate-600">-</span>
+                  )}
+                </td>
+                <td className="p-4 font-mono text-xs text-slate-300">+{formatarMoeda(os.taxa_deslocamento)}</td>
+                <td className="p-4 font-black text-emerald-400 font-mono text-sm">{formatarMoeda(os.custo_medidor)}</td>
                 <td className="p-4 text-right"><a href={os.caminho_medicao} target="_blank" rel="noreferrer" className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors border border-slate-700">Ver PDF</a></td>
               </tr>
             )

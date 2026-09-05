@@ -16,7 +16,7 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
   const [usuarios, setUsuarios] = useState([])
 
   const [formLoja, setFormLoja] = useState({ nome_fantasia: '', cnpj: '', email: '', telefone: '', endereco: '' })
-  const [formMedidor, setFormMedidor] = useState({ nome_completo: '', cpf: '', telefone: '', taxa_por_m2: 1.55 }) // 🔥 ATUALIZADO PARA 1.55
+  const [formMedidor, setFormMedidor] = useState({ nome_completo: '', cpf: '', telefone: '', taxa_por_m2: 3.50, chave_pix: '', tipo_chave_pix: 'CPF' })
   const [formCliente, setFormCliente] = useState({ nome: '', cpf_cnpj: '', telefone: '', email: '' })
   const [formUsuario, setFormUsuario] = useState({ nome: '', email: '', perfil: 'LOJA', ref_id: '' })
 
@@ -42,7 +42,7 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
     setAbaAtiva(aba);
     setEditingId(null)
     setFormLoja({ nome_fantasia: '', cnpj: '', email: '', telefone: '', endereco: '' })
-    setFormMedidor({ nome_completo: '', cpf: '', telefone: '', taxa_por_m2: 1.55 }) // 🔥 ATUALIZADO PARA 1.55
+    setFormMedidor({ nome_completo: '', cpf: '', telefone: '', taxa_por_m2: 3.50, chave_pix: '', tipo_chave_pix: 'CPF' })
     setFormCliente({ nome: '', cpf_cnpj: '', telefone: '', email: '' })
     setFormUsuario({ nome: '', email: '', perfil: 'LOJA', ref_id: '' })
   }
@@ -107,6 +107,25 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
                 <p className="text-xs text-amber-500 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 mb-2">Este medidor ficará disponível na "Nuvem" para que qualquer loja possa atribuir-lhe uma OS.</p>
                 <input required placeholder="Nome Completo" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-blue-500" value={formMedidor.nome_completo} onChange={e => setFormMedidor({...formMedidor, nome_completo: e.target.value})} />
                 <input required placeholder="CPF" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-blue-500" value={formMedidor.cpf} onChange={e => setFormMedidor({...formMedidor, cpf: e.target.value})} />
+                <input placeholder="WhatsApp / Telefone" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-blue-500" value={formMedidor.telefone || ''} onChange={e => setFormMedidor({...formMedidor, telefone: e.target.value})} />
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 ml-1">Tipo de Chave PIX</label>
+                    <select className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-blue-500 appearance-none text-xs" value={formMedidor.tipo_chave_pix || 'CPF'} onChange={e => setFormMedidor({...formMedidor, tipo_chave_pix: e.target.value})}>
+                      <option value="CPF">CPF</option>
+                      <option value="CNPJ">CNPJ</option>
+                      <option value="EMAIL">E-mail</option>
+                      <option value="TELEFONE">Celular / Telefone</option>
+                      <option value="ALEATORIA">Chave Aleatória</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 ml-1">Chave PIX (Split)</label>
+                    <input placeholder="Chave para repasse" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-blue-500 text-xs font-mono" value={formMedidor.chave_pix || ''} onChange={e => setFormMedidor({...formMedidor, chave_pix: e.target.value})} />
+                  </div>
+                </div>
+
                 <div><label className="block text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 ml-1">Repasse (R$ por m²)</label><input required type="number" step="0.01" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-blue-500 font-mono" value={formMedidor.taxa_por_m2} onChange={e => setFormMedidor({...formMedidor, taxa_por_m2: e.target.value})} /></div>
                 <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">{editingId ? 'Atualizar Medidor' : 'Aprovar Medidor'}</button>
               </form>
@@ -170,7 +189,16 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
             <div key={med.id} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex justify-between items-center">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center font-black border border-blue-500/30">{med.nome_completo.substring(0, 2).toUpperCase()}</div>
-                <div><p className="font-bold text-white flex items-center gap-2">{med.nome_completo}</p><p className="text-sm text-slate-500">WhatsApp: {med.telefone}</p></div>
+                <div>
+                  <p className="font-bold text-white flex items-center gap-2">
+                    {med.nome_completo}
+                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">R$ {parseFloat(med.taxa_por_m2 || 0).toFixed(2)}/m²</span>
+                  </p>
+                  <p className="text-xs text-slate-500">📱 WhatsApp: {med.telefone || 'Não informado'}</p>
+                  <p className="text-xs text-slate-400 mt-1 flex items-center gap-1 font-mono">
+                    <span className="text-emerald-400 font-bold">⚡ PIX ({med.tipo_chave_pix || 'CPF'}):</span> {med.chave_pix ? med.chave_pix : <span className="text-amber-500 text-[10px]">Pendente</span>}
+                  </p>
+                </div>
               </div>
               <div className="flex gap-1"><button onClick={() => {setFormMedidor(med); setEditingId(med.id)}} className="p-2 bg-slate-800 rounded-lg hover:text-blue-500">✏️</button><button onClick={() => excluirMedidor(med.id)} className="p-2 bg-slate-800 rounded-lg hover:text-red-500">🗑️</button></div>
             </div>

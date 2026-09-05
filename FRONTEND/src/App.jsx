@@ -7,11 +7,13 @@ import MagicLink from './views/MagicLink'
 import Login from './views/Login'
 import PortalUsuario from './views/PortalUsuario'
 import ResetarSenha from './views/ResetarSenha'
+import TermosModal from './components/TermosModal'
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('sgm_token') || null)
   const [usuario, setUsuario] = useState(localStorage.getItem('sgm_usuario') || '')
   const [menuAberto, setMenuAberto] = useState(false)
+  const [termosAberto, setTermosAberto] = useState(false)
 
   const parseJwt = (t) => { try { return JSON.parse(atob(t.split('.')[1])) } catch (e) { return null } }
   const tokenData = token ? parseJwt(token) : null
@@ -61,8 +63,11 @@ function App() {
       
       <div className="md:hidden flex items-center justify-between p-4 bg-slate-900 border-b border-slate-800 fixed w-full top-0 z-50">
         <h1 className="text-xl font-black text-white italic tracking-tighter">SGM<span className="text-blue-600">.PRO</span></h1>
-        {perfil !== 'MEDIDOR' && <button onClick={() => setMenuAberto(!menuAberto)} className="text-2xl text-slate-400">☰</button>}
-        {perfil === 'MEDIDOR' && <button onClick={fazerLogout} className="text-xs bg-red-500/10 text-red-400 px-3 py-1 rounded-lg font-bold">Sair</button>}
+        <div className="flex items-center gap-2">
+          <button onClick={() => setTermosAberto(true)} className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded-lg font-bold border border-slate-700">⚖️ Termos</button>
+          {perfil !== 'MEDIDOR' && <button onClick={() => setMenuAberto(!menuAberto)} className="text-2xl text-slate-400">☰</button>}
+          {perfil === 'MEDIDOR' && <button onClick={fazerLogout} className="text-xs bg-red-500/10 text-red-400 px-3 py-1.5 rounded-lg font-bold">Sair</button>}
+        </div>
       </div>
 
       {perfil !== 'MEDIDOR' && (
@@ -78,6 +83,13 @@ function App() {
                 <span className="text-xl">{item.icon}</span> <span className="text-sm">{item.label}</span>
               </button>
             ))}
+
+            <button 
+              onClick={() => { setTermosAberto(true); setMenuAberto(false); }}
+              className="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-all text-left"
+            >
+              <span className="text-xl">⚖️</span> <span className="text-sm font-medium">Termos & Garantias</span>
+            </button>
           </nav>
 
           <div className="mt-auto bg-slate-950 p-4 rounded-[1.5rem] border border-slate-800/50">
@@ -108,6 +120,8 @@ function App() {
           {perfil === 'MEDIDOR' && <PortalUsuario perfil={perfil} refId={refId} setToken={setToken} />}
         </div>
       </main>
+
+      <TermosModal isOpen={termosAberto} onClose={() => setTermosAberto(false)} />
     </div>
   )
 }

@@ -127,7 +127,16 @@ func CriarOrdem(c *fiber.Ctx) error {
 
 	subTotal := (custoMedicaoBruto * (1.0 - descontoVolume)) + osData.TaxaDeslocamento
 	osData.ValorTotalOS = subTotal + (subTotal * 0.10)
-	osData.CustoMedidor = custoMedidorBruto + osData.TaxaDeslocamento
+
+	// 🔥 DISCRIÇÃO DETALHADA E ADICIONAL DE URGÊNCIA (+50%) PARA O MEDIDOR
+	osData.MaoDeObraMedidor = custoMedidorBruto
+	if osData.Urgencia {
+		osData.AdicionalUrgencia = custoMedidorBruto * 0.50
+	} else {
+		osData.AdicionalUrgencia = 0.0
+	}
+	osData.CustoMedidor = osData.MaoDeObraMedidor + osData.AdicionalUrgencia + osData.TaxaDeslocamento
+
 	osData.Token = utils.GerarTokenUnico()
 	osData.Status = "PENDENTE_LOJA"
 
@@ -213,7 +222,15 @@ func AtualizarOrdem(c *fiber.Ctx) error {
 
 	subTotal := (custoMedicaoBruto * (1.0 - descontoVolume)) + osAtualizada.TaxaDeslocamento
 	osAtualizada.ValorTotalOS = subTotal + (subTotal * 0.10)
-	osAtualizada.CustoMedidor = custoMedidorBruto + osAtualizada.TaxaDeslocamento
+	
+	// 🔥 DISCRIÇÃO DETALHADA E ADICIONAL DE URGÊNCIA (+50%)
+	osAtualizada.MaoDeObraMedidor = custoMedidorBruto
+	if osAtualizada.Urgencia {
+		osAtualizada.AdicionalUrgencia = custoMedidorBruto * 0.50
+	} else {
+		osAtualizada.AdicionalUrgencia = 0.0
+	}
+	osAtualizada.CustoMedidor = osAtualizada.MaoDeObraMedidor + osAtualizada.AdicionalUrgencia + osAtualizada.TaxaDeslocamento
 
 	// Mantém propriedades vitais imutáveis
 	osAtualizada.ID = osAntiga.ID
@@ -259,9 +276,19 @@ func AtualizarStatus(c *fiber.Ctx) error {
 		}
 		custoBruto := 0.0
 		for _, amb := range os.Ambientes {
-			custoBruto += amb.AreaEstimadaM2 * taxa * amb.Complexidade
+			comp := amb.Complexidade
+			if comp < 1.0 {
+				comp = 1.0
+			}
+			custoBruto += amb.AreaEstimadaM2 * taxa * comp
 		}
-		os.CustoMedidor = custoBruto + os.TaxaDeslocamento
+		os.MaoDeObraMedidor = custoBruto
+		if os.Urgencia {
+			os.AdicionalUrgencia = custoBruto * 0.50
+		} else {
+			os.AdicionalUrgencia = 0.0
+		}
+		os.CustoMedidor = os.MaoDeObraMedidor + os.AdicionalUrgencia + os.TaxaDeslocamento
 	}
 
 	os.Status = p.Status
@@ -276,7 +303,7 @@ func PegarDemanda(c *fiber.Ctx) error {
 	}
 
 	var os models.OrdemServico
-	if err := config.DB.First(&os, c.Params("id")).Error; err != nil {
+	if err := config.DB.Preload("Ambientes").First(&os, c.Params("id")).Error; err != nil {
 		return c.Status(404).JSON(fiber.Map{"erro": "Ordem não encontrada"})
 	}
 
@@ -284,6 +311,30 @@ func PegarDemanda(c *fiber.Ctx) error {
 	os.Status = "EM_ROTA"
 	now := time.Now()
 	os.DataAceite = &now
+
+	var m models.Medidor
+	if err := config.DB.First(&m, refID).Error; err == nil {
+		taxa := m.TaxaPorM2
+		if taxa <= 0 {
+			taxa = 3.50
+		}
+		custoBruto := 0.0
+		for _, amb := range os.Ambientes {
+			comp := amb.Complexidade
+			if comp < 1.0 {
+				comp = 1.0
+			}
+			custoBruto += amb.AreaEstimadaM2 * taxa * comp
+		}
+		os.MaoDeObraMedidor = custoBruto
+		if os.Urgencia {
+			os.AdicionalUrgencia = custoBruto * 0.50
+		} else {
+			os.AdicionalUrgencia = 0.0
+		}
+		os.CustoMedidor = os.MaoDeObraMedidor + os.AdicionalUrgencia + os.TaxaDeslocamento
+	}
+
 	config.DB.Save(&os)
 
 	return c.Status(200).JSON(os)

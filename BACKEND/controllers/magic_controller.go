@@ -46,16 +46,29 @@ func AceitarMagicLink(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"erro": "Dados do formulário inválidos."})
 	}
 
+	// Captura dados para auditoria jurídica (Art. 15 Marco Civil da Internet)
+	ipOrigem := c.Get("X-Forwarded-For")
+	if ipOrigem == "" {
+		ipOrigem = c.Get("X-Real-IP")
+	}
+	if ipOrigem == "" {
+		ipOrigem = c.IP()
+	}
+	userAgent := c.Get("User-Agent")
+	agoraUTC := time.Now().UTC()
+
 	// Deleta briefing anterior se houver para não duplicar
 	config.DB.Where("ordem_servico_id = ?", os.ID).Delete(&models.BriefingCliente{})
 	config.DB.Create(&models.BriefingCliente{
 		OrdemServicoID: os.ID,
 		DadosJSON:      req.DadosJSON,
+		IPOrigem:       ipOrigem,
+		UserAgent:      userAgent,
+		DataHoraUTC:    agoraUTC,
 	})
 
-	agora := time.Now()
 	os.TermosAceitos = true
-	os.DataAceite = &agora
+	os.DataAceite = &agoraUTC
 	config.DB.Save(&os)
 
 	return c.Status(200).JSON(fiber.Map{"mensagem": "Termos aceitos com sucesso!"})

@@ -32,8 +32,13 @@ export default function OsCard({ os, isActive, onView, onEdit, onDelete, medidor
       
       <div className="bg-slate-950/50 p-3 md:p-4 rounded-2xl mb-4 relative border border-slate-800/50">
         {os.termos_aceitos && <span className="absolute top-2 right-2 text-emerald-500 bg-emerald-500/10 text-[9px] md:text-[10px] px-2 py-1 rounded-lg font-bold">✅ Briefing</span>}
-        <p className="text-[9px] md:text-[10px] text-slate-600 uppercase font-black tracking-widest">Faturamento</p>
-        <p className="text-xl md:text-2xl font-black text-white">{formatarMoeda(os.valor_total_os)}</p>
+        <p className="text-[9px] md:text-[10px] text-slate-600 uppercase font-black tracking-widest">GMV Transacionado</p>
+        <div className="flex items-baseline justify-between mt-0.5">
+          <p className="text-xl md:text-2xl font-black text-white font-mono">{formatarMoeda(os.valor_total_os)}</p>
+          <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${os.status_pagamento === 'PAGO' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+            {os.status_pagamento === 'PAGO' ? '⚡ Quitado' : '⏳ Aguardando PIX'}
+          </span>
+        </div>
       </div>
       
       {os.status !== 'CONCLUIDO' && (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 import NovaOsModal from '../components/NovaOsModal'
+import ModalPagamentoPix from '../components/ModalPagamentoPix'
 
 import TabelaCaixaMedidor from '../components/TabelaCaixaMedidor'
 import CardDemandaMedidor from '../components/CardDemandaMedidor'
@@ -22,6 +23,8 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
   const [linkCopiado, setLinkCopiado] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [osParaEditar, setOsParaEditar] = useState(null)
+  const [isPixOpen, setIsPixOpen] = useState(false)
+  const [osParaPix, setOsParaPix] = useState(null)
   
   const [lojas, setLojas] = useState([])
   const [clientes, setClientes] = useState([])
@@ -294,8 +297,13 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
                   <p className="text-slate-500 text-xs mb-4">📍 {os.endereco_obra}</p>
 
                   <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 mb-4 flex-1 relative">
-                    <p className="text-[10px] text-slate-600 uppercase font-black tracking-widest">Faturamento</p>
-                    <p className="text-2xl font-black text-white">{formatarMoeda(os.valor_total_os)}</p>
+                    <div className="flex justify-between items-center mb-1">
+                      <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">GMV Transacionado</p>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${os.status_pagamento === 'PAGO' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                        {os.status_pagamento === 'PAGO' ? '⚡ Quitado' : '⏳ Aguardando PIX'}
+                      </span>
+                    </div>
+                    <p className="text-2xl font-black text-white font-mono">{formatarMoeda(os.valor_total_os)}</p>
                     
                     {/* Alertas de Qualidade da OS */}
                     <div className="mt-3 pt-3 border-t border-slate-800 flex flex-col gap-2 items-start">
@@ -371,10 +379,17 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
                         </div>
                       </>
                     )}
-                    <button onClick={() => gerarPDF(os)} className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-xl text-xs font-bold transition-all">📄 Gerar PDF da OS</button>
+                    <button onClick={() => gerarPDF(os)} className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2 rounded-xl text-xs font-bold transition-all">📄 Gerar PDF da OS</button>
                     
+                    <button 
+                      onClick={() => { setOsParaPix(os); setIsPixOpen(true) }} 
+                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white py-2 rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-1.5"
+                    >
+                      <span>⚡</span> {os.status_pagamento === 'PAGO' ? 'Ver Quitação PIX' : 'Pagar Medição via PIX'}
+                    </button>
+
                     {os.status === 'CONCLUIDO' && os.caminho_medicao && (
-                      <a href={os.caminho_medicao} target="_blank" rel="noreferrer" className="w-full mt-2 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl text-sm font-black transition-all text-center shadow-lg">
+                      <a href={os.caminho_medicao} target="_blank" rel="noreferrer" className="w-full mt-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl text-xs font-black transition-all text-center shadow-lg">
                         📥 Baixar Planta Finalizada
                       </a>
                     )}
@@ -401,6 +416,14 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
         perfil={perfil} 
         refId={refId} 
         onSuccess={() => { setIsModalOpen(false); carregarOrdens() }} 
+      />
+
+      {/* MODAL DE PAGAMENTO PIX */}
+      <ModalPagamentoPix 
+        isOpen={isPixOpen} 
+        onClose={() => setIsPixOpen(false)} 
+        os={osParaPix} 
+        onPagamentoConfirmado={() => { carregarOrdens() }} 
       />
     </div>
   )

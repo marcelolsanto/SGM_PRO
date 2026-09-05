@@ -2,14 +2,17 @@ import { useEffect, useState } from 'react'
 import axios from 'axios'
 import OsCard from '../components/OsCard'
 import NovaOsModal from '../components/NovaOsModal'
+import ModalPagamentoPix from '../components/ModalPagamentoPix'
 
 export default function Operacoes() {
   const [ordens, setOrdens] = useState([])
   const [loading, setLoading] = useState(true)
   
-  // Controle do Modal
+  // Controle dos Modais
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [osParaEditar, setOsParaEditar] = useState(null)
+  const [isPixOpen, setIsPixOpen] = useState(false)
+  const [osParaPix, setOsParaPix] = useState(null)
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('')
@@ -370,12 +373,56 @@ export default function Operacoes() {
               {renderBriefingCliente(osDetalhe.briefing, osDetalhe.ambientes)}
 
               <div>
-                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-2 md:mb-3">Financeiro</p>
+                <div className="flex justify-between items-center mb-2 md:mb-3">
+                  <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Financeiro & Split Contábil</p>
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${osDetalhe.status_pagamento === 'PAGO' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                    {osDetalhe.status_pagamento === 'PAGO' ? '✅ Quitado (PAGO)' : '⏳ Aguardando PIX'}
+                  </span>
+                </div>
                 <div className="bg-slate-950 p-4 md:p-5 rounded-2xl border border-slate-800 space-y-3">
-                  <div className="flex justify-between items-center text-xs md:text-sm pb-2 md:pb-3 border-b border-slate-800 border-dashed"><span className="text-slate-500">Deslocamento</span><span className="text-slate-300 font-mono">{formatarMoeda(osDetalhe.taxa_deslocamento)}</span></div>
-                  <div className="flex justify-between items-center pt-1 md:pt-2"><span className="text-slate-400 font-bold text-xs md:text-sm">Total da Loja</span><span className="text-base md:text-lg font-black text-blue-400">{formatarMoeda(osDetalhe.valor_total_os)}</span></div>
-                  <div className="flex justify-between items-center pb-2 md:pb-3 border-b border-slate-800 border-dashed"><span className="text-slate-500 text-xs md:text-sm">(-) Medidor</span><span className="text-xs md:text-sm font-black text-red-400">-{formatarMoeda(osDetalhe.custo_medidor)}</span></div>
-                  <div className="flex justify-between items-center pt-1 md:pt-2"><span className="text-emerald-500 font-black uppercase text-[10px] md:text-xs tracking-widest">Lucro (SGM)</span><span className="text-xl md:text-2xl font-black text-emerald-400">{formatarMoeda(osDetalhe.valor_total_os - osDetalhe.custo_medidor)}</span></div>
+                  <div className="flex justify-between items-center pt-1 md:pt-2">
+                    <span className="text-slate-400 font-bold text-xs md:text-sm">GMV Transacionado (Total Loja)</span>
+                    <span className="text-base md:text-lg font-black text-blue-400 font-mono">{formatarMoeda(osDetalhe.valor_total_os)}</span>
+                  </div>
+
+                  {/* Detalhamento do Medidor Totalmente Discriminado */}
+                  <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-1.5 text-xs">
+                    <div className="flex justify-between items-center text-slate-300 font-bold">
+                      <span className="flex items-center gap-1"><span>👷</span> Repasse ao Medidor</span>
+                      <span className="text-emerald-400 font-mono font-bold">{formatarMoeda(osDetalhe.custo_medidor)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] text-slate-400 pl-2">
+                      <span>• Mão de Obra Técnica (m²):</span>
+                      <span className="font-mono text-slate-300">
+                        {formatarMoeda(osDetalhe.mao_de_obra_medidor || (osDetalhe.custo_medidor - osDetalhe.taxa_deslocamento - (osDetalhe.adicional_urgencia || 0)))}
+                      </span>
+                    </div>
+                    {(osDetalhe.urgencia || osDetalhe.adicional_urgencia > 0) && (
+                      <div className="flex justify-between items-center text-[11px] text-amber-400 pl-2">
+                        <span>• Adicional de Urgência (+50%):</span>
+                        <span className="font-mono font-bold">
+                          +{formatarMoeda(osDetalhe.adicional_urgencia || (osDetalhe.mao_de_obra_medidor ? osDetalhe.mao_de_obra_medidor * 0.5 : 0))}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center text-[11px] text-slate-400 pl-2">
+                      <span>• Auxílio Deslocamento (Km):</span>
+                      <span className="font-mono text-slate-300">+{formatarMoeda(osDetalhe.taxa_deslocamento)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-1 md:pt-2 border-t border-slate-800 border-dashed">
+                    <span className="text-emerald-500 font-black uppercase text-[10px] md:text-xs tracking-widest">Margem de Intermediação (SGM)</span>
+                    <span className="text-xl md:text-2xl font-black text-emerald-400 font-mono">{formatarMoeda(osDetalhe.valor_total_os - osDetalhe.custo_medidor)}</span>
+                  </div>
+                  
+                  {/* Botão de PIX com Split */}
+                  <button 
+                    onClick={() => { setOsParaPix(osDetalhe); setIsPixOpen(true) }}
+                    className="w-full mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white py-2.5 rounded-xl font-bold text-xs transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-2"
+                  >
+                    <span>⚡</span> {osDetalhe.status_pagamento === 'PAGO' ? 'Ver Detalhes do Pagamento / Split' : 'Pagar Medição via PIX (Split)'}
+                  </button>
                 </div>
               </div>
 
@@ -387,6 +434,7 @@ export default function Operacoes() {
       )}
 
       <NovaOsModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} osParaEditar={osParaEditar} lojas={lojas} clientes={clientes} onSuccess={() => { setIsModalOpen(false); carregarDados() }} />
+      <ModalPagamentoPix isOpen={isPixOpen} onClose={() => setIsPixOpen(false)} os={osParaPix} onPagamentoConfirmado={() => { carregarDados(); if (osDetalhe && osParaPix?.id === osDetalhe.id) { setOsDetalhe({...osDetalhe, status_pagamento: 'PAGO'}) } }} />
     </div>
   )
 }

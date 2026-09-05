@@ -16,4 +16,6 @@ func RegisterOsRoutes(api fiber.Router) {
 	api.Put("/os/:id/cheguei", controllers.MarcarChegada)
 	api.Put("/os/:id/entregar", controllers.EntregarMedicao)
 	api.Delete("/os/:id", controllers.DeletarOrdem)
+	api.Get("/os/:id/pix", controllers.GerarPixOS)
+	api.Post("/os/:id/confirmar-pagamento", controllers.ConfirmarPagamentoOS)
 }

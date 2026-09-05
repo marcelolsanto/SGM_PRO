@@ -64,11 +64,13 @@ export default function Dashboard() {
     return passaLoja && passaMedidor && passaMes
   })
 
-  // Cálculos Financeiros (Sobre as ordens filtradas)
-  const faturamentoTotalLojas = ordensFiltradas.reduce((acc, os) => acc + os.valor_total_os, 0)
-  const custoTotalMedidores = ordensFiltradas.reduce((acc, os) => acc + os.custo_medidor, 0)
-  const lucroLiquidoReal = faturamentoTotalLojas - custoTotalMedidores
-  const ticketMedio = ordensFiltradas.length > 0 ? faturamentoTotalLojas / ordensFiltradas.length : 0
+  // Cálculos Financeiros e Contábeis (Sobre as ordens filtradas)
+  const gmvTotal = ordensFiltradas.reduce((acc, os) => acc + os.valor_total_os, 0)
+  const repasseMedidores = ordensFiltradas.reduce((acc, os) => acc + os.custo_medidor, 0)
+  const margemIntermediacaoSGM = gmvTotal - repasseMedidores
+  const takeRateMedio = gmvTotal > 0 ? (margemIntermediacaoSGM / gmvTotal) * 100 : 0
+  const ticketMedioGMV = ordensFiltradas.length > 0 ? gmvTotal / ordensFiltradas.length : 0
+  const ticketMedioSGM = ordensFiltradas.length > 0 ? margemIntermediacaoSGM / ordensFiltradas.length : 0
   
   const concluidas = ordensFiltradas.filter(os => os.status === 'CONCLUIDO').length
   const emAndamento = ordensFiltradas.length - concluidas
@@ -80,7 +82,7 @@ export default function Dashboard() {
     <div className="animate-fade-in">
       <header className="mb-6 border-b border-slate-800 pb-6">
         <h1 className="text-2xl md:text-3xl font-black text-white">Business Intelligence</h1>
-        <p className="text-slate-500 font-medium mt-1 text-sm md:text-base">Acompanhamento financeiro global e filtrado.</p>
+        <p className="text-slate-500 font-medium mt-1 text-sm md:text-base">Métricas operacionais, financeiras e contábeis do marketplace.</p>
         
         {/* BARRA DE FILTROS INTELIGENTE */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6 bg-slate-900/50 p-3 md:p-4 rounded-2xl border border-slate-800">
@@ -112,47 +114,138 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* LINHA 1: RESULTADOS FINANCEIROS REAIS */}
+      {/* LINHA 1: RESULTADOS FINANCEIROS E CONTÁBEIS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
         <div className="bg-slate-900 border border-slate-800 p-5 md:p-6 rounded-2xl md:rounded-3xl shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 text-4xl md:text-5xl ">🏢</div>
-          <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Receita Lojas (Entrada)</p>
-          <p className="text-3xl md:text-4xl font-black text-white">{formatarMoeda(faturamentoTotalLojas)}</p>
+          <div className="absolute top-0 right-0 p-4 text-4xl md:text-5xl opacity-20">💳</div>
+          <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">GMV Transacionado (Total OSs)</p>
+          <p className="text-3xl md:text-4xl font-black text-white">{formatarMoeda(gmvTotal)}</p>
+          <p className="text-xs text-slate-400 mt-2 font-bold">Volume bruto intermediado</p>
         </div>
         
         <div className="bg-slate-900 border border-slate-800 p-5 md:p-6 rounded-2xl md:rounded-3xl shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 text-4xl md:text-5xl ">🛵</div>
-          <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Custo Medidores (Saída)</p>
-          <p className="text-3xl md:text-4xl font-black text-red-400">-{formatarMoeda(custoTotalMedidores)}</p>
+          <div className="absolute top-0 right-0 p-4 text-4xl md:text-5xl opacity-20">🛵</div>
+          <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Repasse aos Medidores</p>
+          <p className="text-3xl md:text-4xl font-black text-red-400">-{formatarMoeda(repasseMedidores)}</p>
+          <p className="text-xs text-red-400/80 mt-2 font-bold">Remuneração técnica direta</p>
         </div>
         
         <div className="bg-slate-900 border border-emerald-900/50 p-5 md:p-6 rounded-2xl md:rounded-3xl shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 text-4xl md:text-5xl ">📈</div>
-          <p className="text-[10px] text-emerald-500 uppercase font-black tracking-widest mb-1">Lucro Líquido (SGM)</p>
-          <p className="text-3xl md:text-4xl font-black text-emerald-400">{formatarMoeda(lucroLiquidoReal)}</p>
-          <p className="text-xs text-emerald-500/70 mt-2 font-bold">
-            Margem Real: {faturamentoTotalLojas > 0 ? ((lucroLiquidoReal / faturamentoTotalLojas) * 100).toFixed(1) : 0}%
-          </p>
+          <div className="absolute top-0 right-0 p-4 text-4xl md:text-5xl opacity-20">📈</div>
+          <p className="text-[10px] text-emerald-500 uppercase font-black tracking-widest mb-1">Margem de Intermediação (SGM)</p>
+          <p className="text-3xl md:text-4xl font-black text-emerald-400">{formatarMoeda(margemIntermediacaoSGM)}</p>
+          <div className="flex items-center justify-between text-xs text-emerald-500/80 mt-2 font-bold">
+            <span>Take-Rate Efetivo: {takeRateMedio.toFixed(1)}%</span>
+            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded">Base NFS-e</span>
+          </div>
         </div>
       </div>
 
-      {/* LINHA 2: INDICADORES OPERACIONAIS */}
+      {/* LINHA 2: INDICADORES OPERACIONAIS E UNIT ECONOMICS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
         <div className="bg-slate-900 border border-slate-800 p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-xl">
           <p className="text-[9px] md:text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Total de OS</p>
           <p className="text-2xl md:text-3xl font-black text-blue-400">{ordensFiltradas.length}</p>
+          <p className="text-[10px] text-slate-400 mt-1">{concluidas} concluídas ({emAndamento} em rota)</p>
         </div>
         <div className="bg-slate-900 border border-slate-800 p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-xl">
-          <p className="text-[9px] md:text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Concluídas</p>
-          <p className="text-2xl md:text-3xl font-black text-emerald-400">{concluidas}</p>
+          <p className="text-[9px] md:text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Take-Rate SGM</p>
+          <p className="text-2xl md:text-3xl font-black text-emerald-400">{takeRateMedio.toFixed(1)}%</p>
+          <p className="text-[10px] text-slate-400 mt-1">Margem média / OS</p>
         </div>
         <div className="bg-slate-900 border border-slate-800 p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-xl">
-          <p className="text-[9px] md:text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Em Fila / Rota</p>
-          <p className="text-2xl md:text-3xl font-black text-amber-400">{emAndamento}</p>
+          <p className="text-[9px] md:text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Ticket Médio (GMV)</p>
+          <p className="text-2xl md:text-3xl font-black text-white">{formatarMoeda(ticketMedioGMV)}</p>
+          <p className="text-[10px] text-slate-400 mt-1">Valor médio por OS</p>
         </div>
         <div className="bg-slate-900 border border-slate-800 p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-xl col-span-2 md:col-span-1">
-          <p className="text-[9px] md:text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Ticket Médio (Loja)</p>
-          <p className="text-2xl md:text-3xl font-black text-white">{formatarMoeda(ticketMedio)}</p>
+          <p className="text-[9px] md:text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Ticket Médio (SGM)</p>
+          <p className="text-2xl md:text-3xl font-black text-emerald-400">{formatarMoeda(ticketMedioSGM)}</p>
+          <p className="text-[10px] text-slate-400 mt-1">Spread médio capturado</p>
+        </div>
+      </div>
+
+      {/* LINHA 3: TABELA DE AUDITORIA E CAIXA 100% TRANSPARENTE */}
+      <div className="mt-8 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-6 pb-4 border-b border-slate-800">
+          <div>
+            <h2 className="text-lg font-black text-white flex items-center gap-2">
+              <span>🔍</span> Auditoria de Caixa Transparente (Split por OS)
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Discriminação de cada centavo transacionado: Mão de Obra, Adicional de Urgência, Deslocamento e Margem SGM.
+            </p>
+          </div>
+          <span className="text-xs font-bold text-slate-400 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+            {ordensFiltradas.length} Registro(s) no Período
+          </span>
+        </div>
+
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left border-collapse min-w-[950px]">
+            <thead className="bg-slate-950/60 text-[10px] uppercase font-black tracking-widest text-slate-500 border-b border-slate-800">
+              <tr>
+                <th className="p-3">OS</th>
+                <th className="p-3">Cliente / Loja</th>
+                <th className="p-3">Profissional</th>
+                <th className="p-3">Status</th>
+                <th className="p-3 text-right">GMV (Loja)</th>
+                <th className="p-3 text-right">Mão de Obra</th>
+                <th className="p-3 text-right">Urgência</th>
+                <th className="p-3 text-right">Deslocamento</th>
+                <th className="p-3 text-right text-red-400">Total Medidor</th>
+                <th className="p-3 text-right text-emerald-400">Margem SGM</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/40 text-xs">
+              {ordensFiltradas.map(os => {
+                const maoDeObra = os.mao_de_obra_medidor || (os.custo_medidor - os.taxa_deslocamento - (os.adicional_urgencia || 0))
+                const adicionalUrg = os.adicional_urgencia || ((os.urgencia && maoDeObra > 0) ? maoDeObra * 0.5 : 0)
+                const margem = os.valor_total_os - os.custo_medidor
+                const takeRate = os.valor_total_os > 0 ? (margem / os.valor_total_os) * 100 : 0
+
+                return (
+                  <tr key={os.id} className="hover:bg-slate-800/40 transition-colors">
+                    <td className="p-3 font-mono font-bold text-slate-400">#{String(os.id).padStart(4, '0')}</td>
+                    <td className="p-3">
+                      <p className="font-bold text-white">{os.cliente_nome}</p>
+                      <p className="text-[10px] text-blue-400 uppercase font-black tracking-wider">{os.loja?.nome_fantasia || 'Loja'}</p>
+                    </td>
+                    <td className="p-3">
+                      <p className="text-slate-300 font-medium">{os.medidor?.nome_completo || <span className="text-amber-500">Aguardando</span>}</p>
+                    </td>
+                    <td className="p-3">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${os.status === 'CONCLUIDO' ? 'bg-blue-500/10 text-blue-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                        {os.status}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right font-mono font-bold text-white">{formatarMoeda(os.valor_total_os)}</td>
+                    <td className="p-3 text-right font-mono text-slate-300">{formatarMoeda(maoDeObra)}</td>
+                    <td className="p-3 text-right font-mono">
+                      {(os.urgencia || adicionalUrg > 0) ? (
+                        <span className="text-amber-400 font-bold">+{formatarMoeda(adicionalUrg)}</span>
+                      ) : (
+                        <span className="text-slate-600">-</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-right font-mono text-slate-300">+{formatarMoeda(os.taxa_deslocamento)}</td>
+                    <td className="p-3 text-right font-mono font-bold text-red-400">-{formatarMoeda(os.custo_medidor)}</td>
+                    <td className="p-3 text-right font-mono">
+                      <span className="font-bold text-emerald-400">{formatarMoeda(margem)}</span>
+                      <span className="block text-[10px] text-slate-500">({takeRate.toFixed(1)}%)</span>
+                    </td>
+                  </tr>
+                )
+              })}
+              {ordensFiltradas.length === 0 && (
+                <tr>
+                  <td colSpan="10" className="p-8 text-center text-slate-500">
+                    Nenhuma ordem de serviço encontrada nos filtros selecionados.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
