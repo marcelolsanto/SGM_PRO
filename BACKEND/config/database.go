@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"time"
 
 	"workspace/backend/models"
 	"workspace/backend/utils"
@@ -34,6 +35,12 @@ func ConectarBanco() {
 	}
 
 	DB = database
+	sqlDB, errDB := DB.DB()
+	if errDB == nil {
+		sqlDB.SetMaxOpenConns(100)
+		sqlDB.SetMaxIdleConns(25)
+		sqlDB.SetConnMaxLifetime(time.Hour)
+	}
 	log.Println("✅ Banco de dados PostgreSQL conectado com sucesso!")
 
 	// 3. Auto-migrações das tabelas
@@ -64,15 +71,11 @@ func ConectarBanco() {
 		log.Println("👤 Administrador padrão criado: admin@sgm.pro")
 	}
 
-	// 5. Rotina de auto-cura de tokens antigos
-	var ordens []models.OrdemServico
-	DB.Find(&ordens)
-	mapaDeTokens := make(map[string]bool)
-	for _, o := range ordens {
-		if o.Token == "" || mapaDeTokens[o.Token] {
-			o.Token = utils.GerarTokenUnico()
-			DB.Save(&o)
-		}
-		mapaDeTokens[o.Token] = true
+	// 5. Rotina de auto-cura de tokens antigos (apenas ordens sem token)
+	var ordensSemToken []models.OrdemServico
+	DB.Where("token = '' OR token IS NULL").Limit(500).Find(&ordensSemToken)
+	for _, o := range ordensSemToken {
+		o.Token = utils.GerarTokenUnico()
+		DB.Model(&models.OrdemServico{}).Where("id = ?", o.ID).Update("token", o.Token)
 	}
 }

@@ -26,6 +26,9 @@ func getPerfilERefID(c *fiber.Ctx) (string, uint) {
 
 func ListarOrdens(c *fiber.Ctx) error {
 	perfil, refID := getPerfilERefID(c)
+	mes := c.Query("mes")
+	statusFiltro := c.Query("status")
+	limit := c.QueryInt("limit", 0)
 
 	var ordens []models.OrdemServico
 	query := config.DB.Preload("Loja").
@@ -33,13 +36,33 @@ func ListarOrdens(c *fiber.Ctx) error {
 		Preload("Ambientes").
 		Preload("Briefing")
 
+	if mes != "" && mes != "TODOS" {
+		query = query.Where("TO_CHAR(criado_em, 'YYYY-MM') = ?", mes)
+	}
+	if statusFiltro != "" && statusFiltro != "TODOS" {
+		query = query.Where("status = ?", statusFiltro)
+	}
+
 	if perfil == "LOJA" {
-		query = query.Where("loja_id = ?", refID).Order("criado_em DESC").Find(&ordens)
+		q := query.Where("loja_id = ?", refID).Order("criado_em DESC")
+		if limit > 0 {
+			q = q.Limit(limit)
+		} else if mes == "" {
+			// Se não especificou mês, limita aos 250 mais recentes para alta performance
+			q = q.Limit(250)
+		}
+		q.Find(&ordens)
 		return c.Status(200).JSON(ordens)
 	} else if perfil == "MEDIDOR" {
-		query = query.Where("medidor_id = ? OR (medidor_id IS NULL AND status = 'PENDENTE_LOJA')", refID).
-			Order("criado_em DESC").
-			Find(&ordens)
+		q := query.Where("medidor_id = ? OR (medidor_id IS NULL AND status = 'PENDENTE_LOJA')", refID).
+			Order("criado_em DESC")
+		if limit > 0 {
+			q = q.Limit(limit)
+		} else if mes == "" {
+			// Retorna até 250 ordens mais recentes
+			q = q.Limit(250)
+		}
+		q.Find(&ordens)
 
 		var osLiberadas []models.OrdemServico
 		for _, os := range ordens {
@@ -66,7 +89,13 @@ func ListarOrdens(c *fiber.Ctx) error {
 	}
 
 	// ADMIN vê tudo
-	query.Order("criado_em DESC").Find(&ordens)
+	qAdmin := query.Order("criado_em DESC")
+	if limit > 0 {
+		qAdmin = qAdmin.Limit(limit)
+	} else if mes == "" {
+		qAdmin = qAdmin.Limit(250)
+	}
+	qAdmin.Find(&ordens)
 	return c.Status(200).JSON(ordens)
 }
 
