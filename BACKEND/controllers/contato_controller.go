@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/smtp"
@@ -103,9 +104,33 @@ func ListarLeadsContato(c *fiber.Ctx) error {
 }
 
 func dispararEmailContato(p ContatoPayload, leadID uint) {
-	destinatario := os.Getenv("CONTACT_RECIPIENT_EMAIL")
-	if destinatario == "" {
-		destinatario = "marcelolsantos30@gmail.com"
+	logMsg := func(formato string, v ...interface{}) {
+		txt := fmt.Sprintf("[%s] "+formato, append([]interface{}{time.Now().Format("2006-01-02 15:04:05")}, v...)...)
+		fmt.Println(txt)
+		log.Println(txt)
+		// Registra em arquivo local de log para auditoria de contatos
+		if f, err := os.OpenFile("contato.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			f.WriteString(txt + "\n")
+			f.Close()
+		}
+	}
+
+	logMsg("📧 [DISPARO INICIADO] Processando lead #%d (%s - %s)", leadID, p.Nome, p.Empresa)
+
+	destinatariosStr := strings.Trim(strings.TrimSpace(os.Getenv("CONTACT_RECIPIENT_EMAIL")), "\"'")
+	if destinatariosStr == "" {
+		destinatariosStr = "marcelo.lima@telebras.com.br, marcelolsantos30@gmail.com, marcelo.lsantos@bandtec.com.br"
+	}
+
+	var destinatarios []string
+	for _, d := range strings.Split(destinatariosStr, ",") {
+		d = strings.Trim(strings.TrimSpace(d), "\"'")
+		if d != "" {
+			destinatarios = append(destinatarios, d)
+		}
+	}
+	if len(destinatarios) == 0 {
+		destinatarios = []string{"marcelo.lsantos@bandtec.com.br"}
 	}
 
 	labelTipo := "Empresa / Loja de Planejados"
@@ -118,7 +143,7 @@ func dispararEmailContato(p ContatoPayload, leadID uint) {
 	reDigitos := regexp.MustCompile(`[^0-9]`)
 	telLimpo := reDigitos.ReplaceAllString(p.Telefone, "")
 
-	assunto := fmt.Sprintf("[SGM.PRO] Novo Lead: %s (%s)", p.Nome, p.Empresa)
+	assunto := fmt.Sprintf("[SGM.PRO] Novo Lead #%d: %s (%s)", leadID, p.Nome, p.Empresa)
 
 	corpoTxt := fmt.Sprintf("NOVO CONTATO RECEBIDO NO SGM.PRO (Lead #%d)\n\nTipo de Perfil: %s\nNome: %s\n%s: %s\nE-mail: %s\nTelefone/WhatsApp: %s\nCidade/UF: %s\n\nMensagem / Detalhes:\n%s\n\nEnviado automaticamente pelo portal SGM.PRO",
 		leadID, labelTipo, p.Nome, labelEmpresa, p.Empresa, p.Email, p.Telefone, p.Cidade, p.Mensagem)
@@ -181,18 +206,19 @@ func dispararEmailContato(p ContatoPayload, leadID uint) {
 </html>`, labelTipo, p.Nome, labelEmpresa, p.Empresa, p.Email, p.Email, telLimpo, p.Telefone, p.Cidade, p.Mensagem, p.Email)
 
 	// 1. Tenta envio via Resend API (HTTPS)
-	resendKey := os.Getenv("RESEND_API_KEY")
+	rawResendKey := os.Getenv("RESEND_API_KEY")
+	resendKey := strings.Trim(strings.TrimSpace(rawResendKey), "\"'")
 	enviado := false
 
 	if resendKey != "" {
-		resendFrom := os.Getenv("RESEND_FROM_EMAIL")
+		resendFrom := strings.Trim(strings.TrimSpace(os.Getenv("RESEND_FROM_EMAIL")), "\"'")
 		if resendFrom == "" {
-			resendFrom = "SGM.PRO <contato@sgmpro.com.br>"
+			resendFrom = "SGM.PRO <onboarding@resend.dev>"
 		}
 
 		payloadResend := map[string]interface{}{
 			"from":     resendFrom,
-			"to":       []string{destinatario},
+			"to":       destinatarios,
 			"reply_to": p.Email,
 			"subject":  assunto,
 			"html":     corpoHTML,
@@ -204,57 +230,74 @@ func dispararEmailContato(p ContatoPayload, leadID uint) {
 		if errReq == nil {
 			reqHttp.Header.Set("Authorization", "Bearer "+resendKey)
 			reqHttp.Header.Set("Content-Type", "application/json")
-			client := &http.Client{Timeout: 8 * time.Second}
+			client := &http.Client{Timeout: 10 * time.Second}
 			respHttp, errResp := client.Do(reqHttp)
 			if errResp == nil {
+				respBytes, _ := io.ReadAll(respHttp.Body)
+				respHttp.Body.Close()
+
 				if respHttp.StatusCode == 200 || respHttp.StatusCode == 201 {
-					log.Printf("✅ [SGM.PRO] E-mail de lead '%s' enviado via Resend para %s", p.Nome, destinatario)
+					logMsg("✅ [SGM.PRO] E-mail de lead '%s' entregue com sucesso via Resend para %v (Resposta: %s)", p.Nome, destinatarios, string(respBytes))
 					enviado = true
-				} else {
-					// Fallback para sandbox caso domínio ainda não esteja validado
-					log.Printf("⚠️ Resend status %d. Tentando com remetente de sandbox...", respHttp.StatusCode)
+				} else if respHttp.StatusCode == 403 {
+					// Fallback de Sandbox do Resend: só aceita marcelo.lsantos@bandtec.com.br até verificar domínio
+					logMsg("⚠️ Resend 403 (Sandbox de teste). Redirecionando para marcelo.lsantos@bandtec.com.br... Resposta: %s", string(respBytes))
+					payloadResend["to"] = []string{"marcelo.lsantos@bandtec.com.br"}
 					payloadResend["from"] = "SGM.PRO <onboarding@resend.dev>"
-					bodyBytesRetry, _ := json.Marshal(payloadResend)
-					reqRetry, _ := http.NewRequest("POST", "https://api.resend.com/emails", bytes.NewBuffer(bodyBytesRetry))
+					retryBody, _ := json.Marshal(payloadResend)
+					reqRetry, _ := http.NewRequest("POST", "https://api.resend.com/emails", bytes.NewBuffer(retryBody))
 					reqRetry.Header.Set("Authorization", "Bearer "+resendKey)
 					reqRetry.Header.Set("Content-Type", "application/json")
 					respRetry, errRetry := client.Do(reqRetry)
-					if errRetry == nil && (respRetry.StatusCode == 200 || respRetry.StatusCode == 201) {
-						log.Printf("✅ [SGM.PRO] E-mail de lead '%s' enviado via Resend Sandbox para %s", p.Nome, destinatario)
-						enviado = true
+					if errRetry == nil {
+						retryBytes, _ := io.ReadAll(respRetry.Body)
+						respRetry.Body.Close()
+						if respRetry.StatusCode == 200 || respRetry.StatusCode == 201 {
+							logMsg("✅ [SGM.PRO] E-mail entregue com sucesso no Resend para marcelo.lsantos@bandtec.com.br: %s", string(retryBytes))
+							enviado = true
+						} else {
+							logMsg("❌ Erro no envio Resend fallback: HTTP %d - %s", respRetry.StatusCode, string(retryBytes))
+						}
+					} else {
+						logMsg("❌ Erro HTTP ao conectar no Resend: %v", errRetry)
 					}
+				} else {
+					logMsg("❌ Erro inesperado Resend HTTP %d: %s", respHttp.StatusCode, string(respBytes))
 				}
-				respHttp.Body.Close()
+			} else {
+				logMsg("❌ Falha na requisição HTTPS ao Resend: %v", errResp)
 			}
 		}
 	}
 
-	// 2. Fallback para SMTP padrão
+	// 2. Fallback para SMTP Gmail padrão
 	if !enviado {
-		smtpHost := os.Getenv("EMAIL_HOST")
-		smtpPort := os.Getenv("EMAIL_PORT")
-		smtpUser := os.Getenv("EMAIL_HOST_USER")
-		smtpPass := os.Getenv("EMAIL_HOST_PASSWORD")
-		if smtpHost != "" && smtpPort != "" {
-			fromEmail := os.Getenv("DEFAULT_FROM_EMAIL")
+		smtpHost := strings.Trim(strings.TrimSpace(os.Getenv("EMAIL_HOST")), "\"'")
+		smtpPort := strings.Trim(strings.TrimSpace(os.Getenv("EMAIL_PORT")), "\"'")
+		smtpUser := strings.Trim(strings.TrimSpace(os.Getenv("EMAIL_HOST_USER")), "\"'")
+		smtpPass := strings.Trim(strings.TrimSpace(os.Getenv("EMAIL_HOST_PASSWORD")), "\"'")
+		smtpPass = strings.ReplaceAll(smtpPass, " ", "")
+
+		if smtpHost != "" && smtpPort != "" && smtpUser != "" && smtpPass != "" {
+			fromEmail := strings.Trim(strings.TrimSpace(os.Getenv("DEFAULT_FROM_EMAIL")), "\"'")
 			if fromEmail == "" {
-				fromEmail = "contato@sgmpro.com.br"
+				fromEmail = smtpUser
 			}
 			msg := []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nReply-To: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
-				fromEmail, destinatario, p.Email, assunto, corpoHTML))
+				fromEmail, strings.Join(destinatarios, ", "), p.Email, assunto, corpoHTML))
 
 			auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 			addr := fmt.Sprintf("%s:%s", smtpHost, smtpPort)
-			if errSmtp := smtp.SendMail(addr, auth, fromEmail, []string{destinatario}, msg); errSmtp == nil {
-				log.Printf("✅ [SGM.PRO] E-mail de lead '%s' enviado via SMTP para %s", p.Nome, destinatario)
+			if errSmtp := smtp.SendMail(addr, auth, fromEmail, destinatarios, msg); errSmtp == nil {
+				logMsg("✅ [SGM.PRO] E-mail de lead '%s' enviado com sucesso via SMTP Gmail para %v", p.Nome, destinatarios)
 				enviado = true
 			} else {
-				log.Printf("⚠️ Falha no envio via SMTP: %v", errSmtp)
+				logMsg("⚠️ Falha no envio via SMTP Gmail: %v", errSmtp)
 			}
 		}
 	}
 
 	if !enviado {
-		log.Printf("ℹ️ [SGM.PRO LEAD REGISTRADO] Nome: %s | Empresa: %s | Tel: %s | Email: %s", p.Nome, p.Empresa, p.Telefone, p.Email)
+		logMsg("ℹ️ [SGM.PRO LEAD REGISTRADO NO BANCO] Nome: %s | Empresa: %s | Tel: %s | Email: %s", p.Nome, p.Empresa, p.Telefone, p.Email)
 	}
 }
