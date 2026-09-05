@@ -1,13 +1,72 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 
-const TIPOS_AMBIENTE = { 'Quarto / Sala / Corredor': 1.0, 'Escritório / Consultório': 1.2, 'Banheiro (com recortes)': 1.5, 'Cozinha / Área Gourmet': 2.0, 'Outro': 1.0 }
+const TIPOS_AMBIENTE = { 
+  'Cozinha / Churrasqueira': { complexidade: 2.0, precoBase: 62.50 },
+  'Escadaria': { complexidade: 2.0, precoBase: 62.50 },
+  'Área de Serviço / Lavanderia': { complexidade: 1.8, precoBase: 56.25 },
+  'Banheiro': { complexidade: 1.6, precoBase: 50.00 },
+  'Sala de Estar / Jantar': { complexidade: 1.4, precoBase: 43.75 },
+  'Dormitório / Quarto / Suíte': { complexidade: 1.2, precoBase: 37.50 },
+  'Varanda / Sacada': { complexidade: 1.0, precoBase: 31.25 },
+  'Outro (Escritório / Hall / Lavabo)': { complexidade: 1.0, precoBase: 31.25 }
+}
 
 export default function NovaOsModal({ isOpen, onClose, onSuccess, osParaEditar, lojas, clientes, perfil, refId }) {
   const [formData, setFormData] = useState({ cliente_nome: '', endereco_obra: '', loja_id: '', urgencia: false })
   const [cepDigitado, setCepDigitado] = useState('')
   const [ambientes, setAmbientes] = useState([])
   const [salvando, setSalvando] = useState(false)
+
+  const calcularResumoFinanceiro = () => {
+    if (!ambientes || ambientes.length === 0) return { subtotal: 0, desconto: 0, total: 0, pctDesconto: 0 }
+    
+    let subtotal = 0
+    ambientes.forEach(amb => {
+      const nomeLower = (amb.nome || '').toLowerCase()
+      const tipoLower = (amb.tipo_ambiente || '').toLowerCase()
+      
+      let preco = 31.25
+      if (nomeLower.includes('cozinha') || tipoLower.includes('cozinha') || tipoLower.includes('churrasqueira') || tipoLower.includes('gourmet')) preco = 62.50
+      else if (nomeLower.includes('escada') || tipoLower.includes('escada')) preco = 62.50
+      else if (nomeLower.includes('serviço') || nomeLower.includes('servico') || tipoLower.includes('serviço') || tipoLower.includes('servico') || nomeLower.includes('lavanderia') || nomeLower.includes('tanque')) preco = 56.25
+      else if (nomeLower.includes('banheiro') || tipoLower.includes('banheiro') || nomeLower.includes('lavabo') || nomeLower.includes('wc')) preco = 50.00
+      else if (nomeLower.includes('sala') || tipoLower.includes('sala') || nomeLower.includes('estar') || nomeLower.includes('jantar') || nomeLower.includes('living')) preco = 43.75
+      else if (nomeLower.includes('quarto') || tipoLower.includes('quarto') || nomeLower.includes('dormit') || nomeLower.includes('suíte') || nomeLower.includes('suite')) preco = 37.50
+      else if (nomeLower.includes('varanda') || tipoLower.includes('varanda') || nomeLower.includes('sacada') || tipoLower.includes('sacada')) preco = 31.25
+      else if (TIPOS_AMBIENTE[amb.tipo_ambiente]?.precoBase) preco = TIPOS_AMBIENTE[amb.tipo_ambiente].precoBase
+      
+      subtotal += preco
+    })
+
+    const n = ambientes.length
+    let total = subtotal
+    let pct = 0
+
+    if (n === 2) { pct = 5; total = subtotal * 0.95 }
+    else if (n === 3) { pct = 10; total = subtotal * 0.90 }
+    else if (n === 4) { pct = 15; total = subtotal * 0.85 }
+    else if (n === 5) {
+      pct = 20
+      total = Math.min(subtotal * 0.80, 200.0) // Teto R$ 200 para 5 ambientes
+    } else if (n > 5) {
+      pct = 20
+      total = subtotal * 0.80
+    }
+
+    if (formData.urgencia) {
+      total = total * 1.5
+    }
+
+    return {
+      subtotal,
+      desconto: subtotal - (formData.urgencia ? total / 1.5 : total),
+      total,
+      pctDesconto: pct
+    }
+  }
+
+  const resumo = calcularResumoFinanceiro()
 
   useEffect(() => {
     if (isOpen) {
@@ -41,9 +100,9 @@ export default function NovaOsModal({ isOpen, onClose, onSuccess, osParaEditar, 
     }
   }
 
-  const addAmbiente = () => setAmbientes([...ambientes, { nome: '', tipo_ambiente: 'Quarto / Sala / Corredor', area_estimada_m2: '', complexidade: 1.0, observacoes: '', arquivoLocal: null }])
+  const addAmbiente = () => setAmbientes([...ambientes, { nome: '', tipo_ambiente: 'Cozinha / Churrasqueira', area_estimada_m2: '', complexidade: 2.0, observacoes: '', arquivoLocal: null }])
   const rmAmbiente = (i) => setAmbientes(ambientes.filter((_, idx) => idx !== i))
-  const attAmbiente = (i, campo, valor) => { const n = [...ambientes]; n[i][campo] = valor; if (campo === 'tipo_ambiente') n[i].complexidade = TIPOS_AMBIENTE[valor]; setAmbientes(n) }
+  const attAmbiente = (i, campo, valor) => { const n = [...ambientes]; n[i][campo] = valor; if (campo === 'tipo_ambiente') n[i].complexidade = TIPOS_AMBIENTE[valor]?.complexidade || 1.0; setAmbientes(n) }
 
   const handleSubmit = async (e) => {
     e.preventDefault(); 
@@ -62,7 +121,7 @@ export default function NovaOsModal({ isOpen, onClose, onSuccess, osParaEditar, 
           const f = new FormData(); 
           f.append('arquivo', amb.arquivoLocal); 
           try {
-            const r = await axios.post('/api/upload', f); 
+            const r = await axios.post('http://localhost:8080/api/upload', f); 
             pdfUrl = r.data.url;
           } catch (uploadErr) {
             alert("❌ Erro ao enviar o anexo (Pode ser muito pesado ou a internet falhou). Tente sem anexo ou com outro ficheiro.");
@@ -99,10 +158,10 @@ export default function NovaOsModal({ isOpen, onClose, onSuccess, osParaEditar, 
       const payload = { ...formData, loja_id: idDaLoja, ambientes: ambsPrep }
       
       if (osParaEditar) {
-        await axios.put(`/api/os/${osParaEditar.id}`, payload)
+        await axios.put(`http://localhost:8080/api/os/${osParaEditar.id}`, payload)
         alert("✅ OS Atualizada com Sucesso!");
       } else {
-        await axios.post('/api/os', payload)
+        await axios.post('http://localhost:8080/api/os', payload)
         alert("✅ OS Criada e Guardada com Sucesso!");
       }
       
@@ -154,6 +213,44 @@ export default function NovaOsModal({ isOpen, onClose, onSuccess, osParaEditar, 
               ))}
             </div>
           </div>
+
+          {/* RESUMO FINANCEIRO DINÂMICO E COMBO APARTAMENTO COMPLETO */}
+          {ambientes.length > 0 && (
+            <div className="bg-gradient-to-br from-slate-950 to-blue-950/40 p-4 rounded-2xl border border-blue-900/50 mt-4 space-y-2.5">
+              <div className="flex justify-between items-center text-xs text-slate-400">
+                <span>Soma dos Ambientes Avulsos ({ambientes.length} cômodo{ambientes.length > 1 ? 's' : ''}):</span>
+                <span className="line-through font-mono">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(resumo.subtotal)}</span>
+              </div>
+
+              {resumo.pctDesconto > 0 && (
+                <div className="flex justify-between items-center text-xs font-bold text-emerald-400">
+                  <span>🎉 Desconto Combo {ambientes.length === 5 ? 'Apartamento Completo' : `(${resumo.pctDesconto}% OFF)`}:</span>
+                  <span>- {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(resumo.desconto)}</span>
+                </div>
+              )}
+
+              {formData.urgencia && (
+                <div className="flex justify-between items-center text-xs font-bold text-amber-400">
+                  <span>🚨 Adicional de Medição Express (24h):</span>
+                  <span>+50%</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+                <span className="font-bold text-white text-sm">Valor Total da Medição:</span>
+                <span className="text-xl font-black text-emerald-400 font-mono">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(resumo.total)}
+                </span>
+              </div>
+
+              {ambientes.length === 5 && !formData.urgencia && (
+                <div className="text-[11px] text-emerald-300 font-semibold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg text-center">
+                  ✨ Apartamento Completo (5 Cômodos) no teto promocional de R$ 200,00!
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-3 pt-4 border-t border-slate-800"><button type="button" onClick={onClose} className="flex-1 text-slate-500 font-bold hover:text-white py-3 transition-colors">Cancelar</button><button type="submit" disabled={salvando} className="flex-[2] bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-500 shadow-lg transition-colors">{salvando ? '⏳ Salvando...' : (osParaEditar ? 'Atualizar OS' : 'Emitir OS')}</button></div>
         </form>
       </div>

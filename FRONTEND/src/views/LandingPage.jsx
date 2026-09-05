@@ -8,7 +8,7 @@ export default function LandingPage({ onIrParaLogin }) {
   // Variáveis da Loja
   const [volumeOSLoja, setVolumeOSLoja] = useState(40)
   const custoCLTPorOS = 580.0
-  const custoSGMPorOS = 430.0
+  const custoSGMPorOS = 200.0 // Combo Apartamento Completo (5 Cômodos)
   const gastoCLTMensal = volumeOSLoja * custoCLTPorOS
   const gastoSGMMensal = volumeOSLoja * custoSGMPorOS
   const economiaMensalLoja = gastoCLTMensal - gastoSGMMensal
@@ -16,9 +16,9 @@ export default function LandingPage({ onIrParaLogin }) {
   const percentualEconomiaLoja = ((economiaMensalLoja / gastoCLTMensal) * 100).toFixed(1)
 
   // Variáveis do Medidor
-  const [medicoesPorDia, setMedicoesPorDia] = useState(4)
+  const [medicoesPorDia, setMedicoesPorDia] = useState(3)
   const [diasPorSemana, setDiasPorSemana] = useState(5)
-  const ganhoMedioPorOS = 155.0
+  const ganhoMedioPorOS = 160.0 // Repasse de 80% (R$ 160 de R$ 200)
   const totalMedicoesMes = medicoesPorDia * diasPorSemana * 4.2
   const ganhoBrutoMensal = totalMedicoesMes * ganhoMedioPorOS
 
@@ -490,8 +490,8 @@ export default function LandingPage({ onIrParaLogin }) {
                       *Considera salário fixo R$ 2.800 + encargos 70% + combustível + depreciação de veículo/seguro + ociosidade.
                     </p>
                     <p className="flex justify-between pt-2 border-t border-slate-800">
-                      <span>Investimento Terceirizado SGM.PRO:</span>
-                      <strong className="text-blue-400 font-mono">R$ 430,00 / OS</strong>
+                      <span>Investimento SGM.PRO (Apê Completo 5 cômodos):</span>
+                      <strong className="text-emerald-400 font-mono">R$ 200,00 / OS</strong>
                     </p>
                   </div>
                 </div>
@@ -577,11 +577,11 @@ export default function LandingPage({ onIrParaLogin }) {
 
                   <div className="mt-8 text-xs text-slate-400 bg-slate-900/50 p-4 rounded-2xl border border-slate-800/80">
                     <p className="flex justify-between">
-                      <span>Média de repasse por medição:</span>
-                      <strong className="text-emerald-400 font-mono">R$ 155,00 / OS</strong>
+                      <span>Média de repasse por medição (80% da OS):</span>
+                      <strong className="text-emerald-400 font-mono">R$ 160,00 / OS</strong>
                     </p>
                     <p className="text-[11px] text-slate-500 mt-1">
-                      *Pode variar de R$ 130 a R$ 280 dependendo da quantidade de ambientes e urgência da OS.
+                      *80% do valor da OS é seu! Em um apartamento de 5 cômodos (R$ 200), você recebe R$ 160,00 líquidos.
                     </p>
                   </div>
                 </div>
@@ -659,7 +659,7 @@ export default function LandingPage({ onIrParaLogin }) {
                   </p>
 
                   <ul className="space-y-3 text-xs text-slate-300">
-                    <li className="flex items-center gap-2"><span>✓</span> Pague apenas R$ 430 por medição</li>
+                    <li className="flex items-center gap-2"><span>✓</span> Apenas R$ 200 no combo de 5 ambientes (ou à la carte)</li>
                     <li className="flex items-center gap-2"><span>✓</span> Laudo PDF com fotos em alta resolução</li>
                     <li className="flex items-center gap-2"><span>✓</span> Validação digital via Magic Link</li>
                     <li className="flex items-center gap-2"><span>✓</span> Sem mensalidade nem fidelidade</li>
@@ -692,7 +692,7 @@ export default function LandingPage({ onIrParaLogin }) {
                   </p>
 
                   <ul className="space-y-3 text-xs text-slate-200">
-                    <li className="flex items-center gap-2 font-bold text-emerald-400"><span>✓</span> Desconto exclusivo: R$ 380 por OS</li>
+                    <li className="flex items-center gap-2 font-bold text-emerald-400"><span>✓</span> Desconto adicional em lote e prioridade máxima</li>
                     <li className="flex items-center gap-2"><span>✓</span> Arquivo Promob (.promob) montado</li>
                     <li className="flex items-center gap-2"><span>✓</span> Medidores Ouro com prioridade de envio</li>
                     <li className="flex items-center gap-2"><span>✓</span> Painel de Business Intelligence (BI)</li>
@@ -759,7 +759,7 @@ export default function LandingPage({ onIrParaLogin }) {
                   </p>
                   <ul className="space-y-2 text-xs text-slate-300">
                     <li className="flex items-center gap-2"><span>✓</span> Cadastro sem nenhum custo de entrada</li>
-                    <li className="flex items-center gap-2"><span>✓</span> Repasse médio de R$ 130 a R$ 180 por OS</li>
+                    <li className="flex items-center gap-2"><span>✓</span> Repasse de 80% do valor da OS (até R$ 160+ por OS)</li>
                     <li className="flex items-center gap-2"><span>✓</span> Pagamento quinzenal garantido</li>
                   </ul>
                 </div>
