@@ -80,7 +80,32 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
   }
 
   const deletarOS = async (id) => { if(window.confirm("Excluir esta OS permanentemente?")) { try { await axios.delete(`/api/os/${id}`); carregarOrdens() } catch(e){} } }
+  const abrirLinkCliente = (token) => { window.open(`${window.location.origin}/cliente/${token}`, '_blank') }
   const copiarLinkCliente = (token) => { navigator.clipboard.writeText(`${window.location.origin}/cliente/${token}`).then(() => { setLinkCopiado(token); setTimeout(() => setLinkCopiado(null), 2000) }) }
+  const enviarWhatsAppCliente = (os) => {
+    const url = `${window.location.origin}/cliente/${os.token}`
+    const clienteObj = clientes.find(c => c.nome?.toLowerCase() === os.cliente_nome?.toLowerCase())
+    const tel = (clienteObj?.telefone || '').replace(/\D/g, '')
+    const msg = encodeURIComponent(`Olá, ${os.cliente_nome}!\n\nSegue o link para autorização e agendamento da medição técnica da sua obra (${os.loja?.nome_fantasia || 'SGM.PRO'}):\n\n🔗 ${url}\n\nPor favor, confirme os ambientes e selecione o melhor dia e horário!`)
+    let waUrl = `https://api.whatsapp.com/send?text=${msg}`
+    if (tel.length >= 10) {
+      const ddi = tel.startsWith('55') ? tel : `55${tel}`
+      waUrl = `https://api.whatsapp.com/send?phone=${ddi}&text=${msg}`
+    }
+    window.open(waUrl, '_blank')
+  }
+  const compartilharLinkCliente = (os) => {
+    const url = `${window.location.origin}/cliente/${os.token}`
+    if (navigator.share) {
+      navigator.share({
+        title: `Medição Técnica - ${os.cliente_nome}`,
+        text: `Autorização e agendamento da medição técnica (${os.loja?.nome_fantasia || 'SGM.PRO'}):`,
+        url: url
+      }).catch(() => {})
+    } else {
+      copiarLinkCliente(os.token)
+    }
+  }
   const abrirEdicaoOS = (os) => { setOsParaEditar(os); setIsModalOpen(true) }
 
   const reatribuirMedidor = async (os, novoMedidorId) => {
@@ -313,9 +338,39 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
 
                   {/* Botões de Ação */}
                   <div className="flex flex-col gap-2 mt-auto">
-                    <button onClick={() => copiarLinkCliente(os.token)} className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all border ${linkCopiado === os.token ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-950 border-slate-800 hover:bg-slate-800 text-blue-400'}`}>
-                      {linkCopiado === os.token ? "✅ Link Copiado!" : "🔗 Copiar Link para Cliente"}
-                    </button>
+                    {os.token && (
+                      <>
+                        <button 
+                          onClick={() => abrirLinkCliente(os.token)} 
+                          className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl font-black text-xs transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-1.5"
+                        >
+                          🔗 Abrir Link do Cliente
+                        </button>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button 
+                            onClick={() => enviarWhatsAppCliente(os)} 
+                            className="bg-emerald-600/15 hover:bg-emerald-600 border border-emerald-500/30 text-emerald-400 hover:text-white py-2 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1"
+                            title="Enviar via WhatsApp"
+                          >
+                            💬 Whats
+                          </button>
+                          <button 
+                            onClick={() => copiarLinkCliente(os.token)} 
+                            className={`py-2 rounded-lg font-bold text-[11px] transition-all border flex items-center justify-center gap-1 ${linkCopiado === os.token ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-950 border-slate-800 hover:bg-slate-800 text-slate-300'}`}
+                            title="Copiar Link"
+                          >
+                            {linkCopiado === os.token ? "✅ Copiado" : "📋 Copiar"}
+                          </button>
+                          <button 
+                            onClick={() => compartilharLinkCliente(os)} 
+                            className="bg-sky-600/15 hover:bg-sky-600 border border-sky-500/30 text-sky-400 hover:text-white py-2 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1"
+                            title="Compartilhar Link"
+                          >
+                            📤 Enviar
+                          </button>
+                        </div>
+                      </>
+                    )}
                     <button onClick={() => gerarPDF(os)} className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-xl text-xs font-bold transition-all">📄 Gerar PDF da OS</button>
                     
                     {os.status === 'CONCLUIDO' && os.caminho_medicao && (

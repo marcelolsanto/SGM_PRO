@@ -194,7 +194,43 @@ export default function Operacoes() {
   const aceitarMedicao = async (osId, medidorId) => { try { await axios.put(`/api/os/${osId}/status`, { medidor_id: parseInt(medidorId), status: "EM_ROTA" }); alert("✅ Rota atualizada!"); carregarDados() } catch (error) { alert("Erro ao transferir.") } }
   const finalizarMedicao = async (os) => { if(window.confirm("Confirmar conclusão? O faturamento será consolidado.")) { await axios.put(`/api/os/${os.id}/status`, { medidor_id: os.medidor_id, status: "CONCLUIDO" }); setOsDetalhe({ ...os, status: "CONCLUIDO" }); carregarDados() } }
   
-  const copiarLinkCliente = (token) => { navigator.clipboard.writeText(`${window.location.origin}/cliente/${token}`).then(() => { setLinkCopiado(true); setTimeout(() => setLinkCopiado(false), 2000) }) }
+  const abrirLinkCliente = (token) => {
+    window.open(`${window.location.origin}/cliente/${token}`, '_blank')
+  }
+
+  const copiarLinkCliente = (token) => {
+    navigator.clipboard.writeText(`${window.location.origin}/cliente/${token}`).then(() => {
+      setLinkCopiado(true);
+      setTimeout(() => setLinkCopiado(false), 2000)
+    })
+  }
+
+  const enviarWhatsAppCliente = (os) => {
+    const url = `${window.location.origin}/cliente/${os.token}`
+    const clienteObj = clientes.find(c => c.nome?.toLowerCase() === os.cliente_nome?.toLowerCase())
+    const tel = (clienteObj?.telefone || '').replace(/\D/g, '')
+    const msg = encodeURIComponent(`Olá, ${os.cliente_nome}!\n\nSegue o link para autorização e agendamento da medição técnica da sua obra (${os.loja?.nome_fantasia || 'SGM.PRO'}):\n\n🔗 ${url}\n\nPor favor, confirme os ambientes e selecione o melhor dia e horário!`)
+    
+    let waUrl = `https://api.whatsapp.com/send?text=${msg}`
+    if (tel.length >= 10) {
+      const ddi = tel.startsWith('55') ? tel : `55${tel}`
+      waUrl = `https://api.whatsapp.com/send?phone=${ddi}&text=${msg}`
+    }
+    window.open(waUrl, '_blank')
+  }
+
+  const compartilharLinkCliente = (os) => {
+    const url = `${window.location.origin}/cliente/${os.token}`
+    if (navigator.share) {
+      navigator.share({
+        title: `Medição Técnica - ${os.cliente_nome}`,
+        text: `Autorização e agendamento da medição técnica (${os.loja?.nome_fantasia || 'SGM.PRO'}):`,
+        url: url
+      }).catch(() => {})
+    } else {
+      copiarLinkCliente(os.token)
+    }
+  }
 
   const mesesDisponiveis = [...new Set(ordens.map(o => o.criado_em.substring(0,7)))].sort().reverse()
   const formatarMesAno = (m) => { const [ano, mes] = m.split('-'); return `${new Date(ano, mes-1).toLocaleString('pt-BR', {month:'short'}).toUpperCase()}/${ano}` }
@@ -269,7 +305,39 @@ export default function Operacoes() {
                 </div>
                 {osDetalhe.token && (
                   <div className="flex flex-col gap-2 md:gap-3 mt-3">
-                    <button onClick={() => copiarLinkCliente(osDetalhe.token)} className={`w-full py-2.5 md:py-3 rounded-xl font-bold text-xs md:text-sm transition-all border ${linkCopiado ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-blue-400'}`}>{linkCopiado ? "✅ Link Copiado!" : "🔗 Link do Cliente"}</button>
+                    {/* Botão Principal: Abre diretamente a tela do Link Mágico */}
+                    <button 
+                      onClick={() => abrirLinkCliente(osDetalhe.token)} 
+                      className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-black text-xs md:text-sm transition-all shadow-lg shadow-blue-600/20 flex justify-center items-center gap-2"
+                    >
+                      🔗 Abrir Link do Cliente
+                    </button>
+
+                    {/* Ações Rápidas: WhatsApp, Copiar e Compartilhar */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <button 
+                        onClick={() => enviarWhatsAppCliente(osDetalhe)} 
+                        className="bg-emerald-600/15 hover:bg-emerald-600 border border-emerald-500/30 text-emerald-400 hover:text-white py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1"
+                        title="Enviar via WhatsApp"
+                      >
+                        💬 WhatsApp
+                      </button>
+                      <button 
+                        onClick={() => copiarLinkCliente(osDetalhe.token)} 
+                        className={`py-2.5 rounded-xl font-bold text-xs transition-all border flex items-center justify-center gap-1 ${linkCopiado ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-slate-300'}`}
+                        title="Copiar Link"
+                      >
+                        {linkCopiado ? "✅ Copiado" : "📋 Copiar"}
+                      </button>
+                      <button 
+                        onClick={() => compartilharLinkCliente(osDetalhe)} 
+                        className="bg-sky-600/15 hover:bg-sky-600 border border-sky-500/30 text-sky-400 hover:text-white py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1"
+                        title="Compartilhar Link"
+                      >
+                        📤 Enviar
+                      </button>
+                    </div>
+
                     <button onClick={() => gerarPDF(osDetalhe)} className="w-full bg-red-600/10 border border-red-500/30 hover:bg-red-600 hover:text-white text-red-400 py-2.5 md:py-3 rounded-xl font-bold text-xs md:text-sm transition-all flex justify-center items-center gap-2">📄 Gerar PDF (Imprimir)</button>
                   </div>
                 )}
