@@ -23,13 +23,13 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
   const carregarDados = async () => {
     try {
       if (perfil === 'ADMIN') {
-        const resLojas = await axios.get('http://localhost:8080/api/lojas')
-        const resMedidores = await axios.get('http://localhost:8080/api/medidores')
+        const resLojas = await axios.get('/api/lojas')
+        const resMedidores = await axios.get('/api/medidores')
         setLojas(resLojas.data)
         setMedidores(resMedidores.data)
       }
-      const resClientes = await axios.get('http://localhost:8080/api/clientes')
-      const resUsuarios = await axios.get('http://localhost:8080/api/usuarios')
+      const resClientes = await axios.get('/api/clientes')
+      const resUsuarios = await axios.get('/api/usuarios')
       
       setClientes(resClientes.data)
       setUsuarios(resUsuarios.data)
@@ -48,9 +48,9 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
   }
 
   // Salvamentos API...
-  const salvarLoja = async (e) => { e.preventDefault(); try { if (editingId) await axios.put(`http://localhost:8080/api/lojas/${editingId}`, formLoja); else await axios.post('http://localhost:8080/api/lojas', formLoja); trocarAba('lojas'); carregarDados() } catch (e) { alert("Erro") } }
-  const salvarMedidor = async (e) => { e.preventDefault(); try { const p = { ...formMedidor, taxa_por_m2: parseFloat(formMedidor.taxa_por_m2) }; if (editingId) await axios.put(`http://localhost:8080/api/medidores/${editingId}`, p); else await axios.post('http://localhost:8080/api/medidores', p); trocarAba('medidores globais'); carregarDados() } catch (e) { alert("Erro") } }
-  const salvarCliente = async (e) => { e.preventDefault(); try { if (editingId) await axios.put(`http://localhost:8080/api/clientes/${editingId}`, formCliente); else await axios.post('http://localhost:8080/api/clientes', formCliente); trocarAba('clientes'); carregarDados() } catch (e) { alert("Erro") } }
+  const salvarLoja = async (e) => { e.preventDefault(); try { if (editingId) await axios.put(`/api/lojas/${editingId}`, formLoja); else await axios.post('/api/lojas', formLoja); trocarAba('lojas'); carregarDados() } catch (e) { alert("Erro") } }
+  const salvarMedidor = async (e) => { e.preventDefault(); try { const p = { ...formMedidor, taxa_por_m2: parseFloat(formMedidor.taxa_por_m2) }; if (editingId) await axios.put(`/api/medidores/${editingId}`, p); else await axios.post('/api/medidores', p); trocarAba('medidores globais'); carregarDados() } catch (e) { alert("Erro") } }
+  const salvarCliente = async (e) => { e.preventDefault(); try { if (editingId) await axios.put(`/api/clientes/${editingId}`, formCliente); else await axios.post('/api/clientes', formCliente); trocarAba('clientes'); carregarDados() } catch (e) { alert("Erro") } }
 
   const salvarUsuario = async (e) => {
     e.preventDefault()
@@ -59,8 +59,8 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
       if (perfil === 'LOJA') { payload.perfil = 'LOJA'; payload.ref_id = refId } 
       else { payload.ref_id = parseInt(formUsuario.ref_id) || 0 }
 
-      if (editingId) await axios.put(`http://localhost:8080/api/usuarios/${editingId}`, payload)
-      else { await axios.post('http://localhost:8080/api/usuarios', payload); alert("✅ Utilizador criado com sucesso! Senha padrão: mudar@123") }
+      if (editingId) await axios.put(`/api/usuarios/${editingId}`, payload)
+      else { await axios.post('/api/usuarios', payload); alert("✅ Utilizador criado com sucesso! Senha padrão: mudar@123") }
       trocarAba(perfil === 'ADMIN' ? 'usuarios' : 'minha equipe'); carregarDados()
     } catch (error) { 
       const msg = error.response?.data?.erro || "Erro ao salvar utilizador";
@@ -68,10 +68,10 @@ export default function Admin({ perfil = 'ADMIN', refId = 0 }) {
     }
   }
 
-  const excluirLoja = async (id) => { if(window.confirm("Excluir?")) { await axios.delete(`http://localhost:8080/api/lojas/${id}`); carregarDados() } }
-  const excluirMedidor = async (id) => { if(window.confirm("Excluir?")) { await axios.delete(`http://localhost:8080/api/medidores/${id}`); carregarDados() } }
-  const excluirCliente = async (id) => { if(window.confirm("Excluir?")) { await axios.delete(`http://localhost:8080/api/clientes/${id}`); carregarDados() } }
-  const excluirUsuario = async (id) => { if(window.confirm("Remover o acesso?")) { await axios.delete(`http://localhost:8080/api/usuarios/${id}`); carregarDados() } }
+  const excluirLoja = async (id) => { if(window.confirm("Excluir?")) { await axios.delete(`/api/lojas/${id}`); carregarDados() } }
+  const excluirMedidor = async (id) => { if(window.confirm("Excluir?")) { await axios.delete(`/api/medidores/${id}`); carregarDados() } }
+  const excluirCliente = async (id) => { if(window.confirm("Excluir?")) { await axios.delete(`/api/clientes/${id}`); carregarDados() } }
+  const excluirUsuario = async (id) => { if(window.confirm("Remover o acesso?")) { await axios.delete(`/api/usuarios/${id}`); carregarDados() } }
 
   return (
     <div className="animate-fade-in">

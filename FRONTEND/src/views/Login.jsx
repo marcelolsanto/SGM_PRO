@@ -16,7 +16,7 @@ export default function Login({ setToken, setUsuario }) {
     setErro('')
     setLoading(true)
     try {
-      const res = await axios.post('http://localhost:8080/api/login', { email, senha })
+      const res = await axios.post('/api/login', { email, senha })
       localStorage.setItem('sgm_token', res.data.token)
       localStorage.setItem('sgm_usuario', res.data.nome)
       setToken(res.data.token)
@@ -33,7 +33,7 @@ export default function Login({ setToken, setUsuario }) {
     setMsgRecuperacao('')
     setLoading(true)
     try {
-      await axios.post('http://localhost:8080/api/esqueci-senha', { email })
+      await axios.post('/api/esqueci-senha', { email })
       setMsgRecuperacao('Instruções enviadas! Verifique seu e-mail (ou o terminal do servidor local).')
     } catch (err) {
       setErro('E-mail não encontrado no sistema.')

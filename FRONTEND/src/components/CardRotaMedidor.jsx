@@ -30,7 +30,7 @@ export default function CardRotaMedidor({ os, formatarMoeda, marcarChegada, entr
     const formData = new FormData(); 
     formData.append('arquivo', file); 
     try { 
-      const res = await axios.post('http://localhost:8080/api/upload', formData); 
+      const res = await axios.post('/api/upload', formData); 
       entregarMedicao(os.id, res.data.url, materiaisTexto, observacoesTexto); 
     } catch (error) { 
       alert("Erro de conexão no upload."); 

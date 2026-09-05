@@ -6,19 +6,19 @@ export default function EquipeLoja() {
   const [form, setForm] = useState({ nome: '', email: '' })
   const [editingId, setEditingId] = useState(null)
 
-  const carregar = () => axios.get('http://localhost:8080/api/usuarios').then(res => setUsuarios(res.data))
+  const carregar = () => axios.get('/api/usuarios').then(res => setUsuarios(res.data))
   useEffect(() => { carregar() }, [])
 
   const salvar = async (e) => {
     e.preventDefault()
     try {
-      if (editingId) await axios.put(`http://localhost:8080/api/usuarios/${editingId}`, form)
-      else { await axios.post('http://localhost:8080/api/usuarios', form); alert("Usuário criado! A senha é: mudar@123") }
+      if (editingId) await axios.put(`/api/usuarios/${editingId}`, form)
+      else { await axios.post('/api/usuarios', form); alert("Usuário criado! A senha é: mudar@123") }
       setForm({ nome: '', email: '' }); setEditingId(null); carregar()
     } catch(e) { alert("Erro ao salvar usuário.") }
   }
 
-  const deletar = async (id) => { if(window.confirm("Remover o acesso deste usuário?")) { await axios.delete(`http://localhost:8080/api/usuarios/${id}`); carregar() } }
+  const deletar = async (id) => { if(window.confirm("Remover o acesso deste usuário?")) { await axios.delete(`/api/usuarios/${id}`); carregar() } }
 
   return (
     <div className="animate-fade-in flex flex-col h-full">

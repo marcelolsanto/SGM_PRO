@@ -173,7 +173,7 @@ export default function Operacoes() {
   }
 
   const carregarDados = () => {
-    axios.get('http://localhost:8080/api/os').then(res => { 
+    axios.get('/api/os').then(res => { 
         setOrdens(res.data || []); setLoading(false)
         if (osDetalhe) { const att = res.data?.find(o => o.id === osDetalhe.id); if (att) setOsDetalhe(att) }
     }).catch(() => setLoading(false))
@@ -182,7 +182,7 @@ export default function Operacoes() {
   const carregarCadastros = async () => {
     try {
       const [resLojas, resClientes, resMedidores] = await Promise.all([
-        axios.get('http://localhost:8080/api/lojas'), axios.get('http://localhost:8080/api/clientes'), axios.get('http://localhost:8080/api/medidores')
+        axios.get('/api/lojas'), axios.get('/api/clientes'), axios.get('/api/medidores')
       ])
       setLojas(resLojas.data); setClientes(resClientes.data); setMedidores(resMedidores.data)
     } catch (error) {}
@@ -190,9 +190,9 @@ export default function Operacoes() {
 
   useEffect(() => { carregarDados(); carregarCadastros() }, [])
 
-  const deletarOS = async (id) => { if(window.confirm("Cancelar e excluir esta OS?")) { await axios.delete(`http://localhost:8080/api/os/${id}`); if (osDetalhe?.id === id) setOsDetalhe(null); carregarDados() } }
-  const aceitarMedicao = async (osId, medidorId) => { try { await axios.put(`http://localhost:8080/api/os/${osId}/status`, { medidor_id: parseInt(medidorId), status: "EM_ROTA" }); alert("✅ Rota atualizada!"); carregarDados() } catch (error) { alert("Erro ao transferir.") } }
-  const finalizarMedicao = async (os) => { if(window.confirm("Confirmar conclusão? O faturamento será consolidado.")) { await axios.put(`http://localhost:8080/api/os/${os.id}/status`, { medidor_id: os.medidor_id, status: "CONCLUIDO" }); setOsDetalhe({ ...os, status: "CONCLUIDO" }); carregarDados() } }
+  const deletarOS = async (id) => { if(window.confirm("Cancelar e excluir esta OS?")) { await axios.delete(`/api/os/${id}`); if (osDetalhe?.id === id) setOsDetalhe(null); carregarDados() } }
+  const aceitarMedicao = async (osId, medidorId) => { try { await axios.put(`/api/os/${osId}/status`, { medidor_id: parseInt(medidorId), status: "EM_ROTA" }); alert("✅ Rota atualizada!"); carregarDados() } catch (error) { alert("Erro ao transferir.") } }
+  const finalizarMedicao = async (os) => { if(window.confirm("Confirmar conclusão? O faturamento será consolidado.")) { await axios.put(`/api/os/${os.id}/status`, { medidor_id: os.medidor_id, status: "CONCLUIDO" }); setOsDetalhe({ ...os, status: "CONCLUIDO" }); carregarDados() } }
   
   const copiarLinkCliente = (token) => { navigator.clipboard.writeText(`${window.location.origin}/cliente/${token}`).then(() => { setLinkCopiado(true); setTimeout(() => setLinkCopiado(false), 2000) }) }
 

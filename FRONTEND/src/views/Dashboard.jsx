@@ -16,9 +16,9 @@ export default function Dashboard() {
     const fetchData = async () => {
       try {
         const [resOs, resLojas, resMedidores] = await Promise.all([
-          axios.get('http://localhost:8080/api/os'),
-          axios.get('http://localhost:8080/api/lojas'),
-          axios.get('http://localhost:8080/api/medidores')
+          axios.get('/api/os'),
+          axios.get('/api/lojas'),
+          axios.get('/api/medidores')
         ])
         setOrdens(resOs.data)
         setLojas(resLojas.data)

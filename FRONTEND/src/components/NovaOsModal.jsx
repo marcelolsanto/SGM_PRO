@@ -62,7 +62,7 @@ export default function NovaOsModal({ isOpen, onClose, onSuccess, osParaEditar, 
           const f = new FormData(); 
           f.append('arquivo', amb.arquivoLocal); 
           try {
-            const r = await axios.post('http://localhost:8080/api/upload', f); 
+            const r = await axios.post('/api/upload', f); 
             pdfUrl = r.data.url;
           } catch (uploadErr) {
             alert("❌ Erro ao enviar o anexo (Pode ser muito pesado ou a internet falhou). Tente sem anexo ou com outro ficheiro.");
@@ -99,10 +99,10 @@ export default function NovaOsModal({ isOpen, onClose, onSuccess, osParaEditar, 
       const payload = { ...formData, loja_id: idDaLoja, ambientes: ambsPrep }
       
       if (osParaEditar) {
-        await axios.put(`http://localhost:8080/api/os/${osParaEditar.id}`, payload)
+        await axios.put(`/api/os/${osParaEditar.id}`, payload)
         alert("✅ OS Atualizada com Sucesso!");
       } else {
-        await axios.post('http://localhost:8080/api/os', payload)
+        await axios.post('/api/os', payload)
         alert("✅ OS Criada e Guardada com Sucesso!");
       }
       

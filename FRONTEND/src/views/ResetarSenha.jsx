@@ -21,7 +21,7 @@ export default function ResetarSenha({ token }) {
 
     setLoading(true)
     try {
-      await axios.post('http://localhost:8080/api/resetar-senha', { token, nova_senha: novaSenha })
+      await axios.post('/api/resetar-senha', { token, nova_senha: novaSenha })
       setSucesso(true)
     } catch (err) {
       setErro(err.response?.data?.erro || "Erro ao redefinir a senha. O link pode estar expirado.")

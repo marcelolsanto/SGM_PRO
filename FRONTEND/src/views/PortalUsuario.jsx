@@ -30,15 +30,15 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
   const fazerLogout = () => { localStorage.removeItem('sgm_token'); localStorage.removeItem('sgm_usuario'); if (setToken) setToken(null); window.location.href = '/' }
 
   const carregarOrdens = () => {
-    setLoading(true); axios.get('http://localhost:8080/api/os').then(res => { setTodasOrdens(res.data || []); setLoading(false) }).catch(() => setLoading(false))
+    setLoading(true); axios.get('/api/os').then(res => { setTodasOrdens(res.data || []); setLoading(false) }).catch(() => setLoading(false))
   }
 
   const carregarCadastros = async () => {
     try {
       const [resLojas, resClientes, resMedidores] = await Promise.all([ 
-        axios.get('http://localhost:8080/api/lojas'), 
-        axios.get('http://localhost:8080/api/clientes'),
-        axios.get('http://localhost:8080/api/medidores')
+        axios.get('/api/lojas'), 
+        axios.get('/api/clientes'),
+        axios.get('/api/medidores')
       ])
       setLojas(perfil === 'LOJA' ? resLojas.data.filter(l => l.id === refId) : resLojas.data)
       setClientes(resClientes.data)
@@ -79,7 +79,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
     setTimeout(() => { iframe.contentWindow.focus(); iframe.contentWindow.print(); setTimeout(() => document.body.removeChild(iframe), 2000) }, 500)
   }
 
-  const deletarOS = async (id) => { if(window.confirm("Excluir esta OS permanentemente?")) { try { await axios.delete(`http://localhost:8080/api/os/${id}`); carregarOrdens() } catch(e){} } }
+  const deletarOS = async (id) => { if(window.confirm("Excluir esta OS permanentemente?")) { try { await axios.delete(`/api/os/${id}`); carregarOrdens() } catch(e){} } }
   const copiarLinkCliente = (token) => { navigator.clipboard.writeText(`${window.location.origin}/cliente/${token}`).then(() => { setLinkCopiado(token); setTimeout(() => setLinkCopiado(null), 2000) }) }
   const abrirEdicaoOS = (os) => { setOsParaEditar(os); setIsModalOpen(true) }
 
@@ -92,7 +92,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
       const idLimpo = novoMedidorId ? parseInt(novoMedidorId) : null;
       const novoStatus = idLimpo ? 'EM_ROTA' : 'PENDENTE_LOJA';
       
-      await axios.put(`http://localhost:8080/api/os/${os.id}/status`, { medidor_id: idLimpo, status: novoStatus });
+      await axios.put(`/api/os/${os.id}/status`, { medidor_id: idLimpo, status: novoStatus });
       alert(idLimpo ? "✅ Rota atribuída com sucesso! E-mail enviado ao Medidor." : "✅ Rota libertada para o Radar de Demandas!");
       carregarOrdens();
     } catch (e) {
@@ -100,13 +100,13 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
     }
   }
 
-  const aceitarDemanda = async (osId) => { try { await axios.put(`http://localhost:8080/api/os/${osId}/pegar-demanda`); alert("✅ Rota confirmada!"); setAbaMedidor('minhas'); carregarOrdens() } catch (e) {} }
-  const marcarChegada = async (osId) => { try { await axios.put(`http://localhost:8080/api/os/${osId}/cheguei`); alert("📍 Check-in realizado! Loja notificada."); carregarOrdens() } catch (error) { alert("⚠️ Erro ao registrar chegada."); } }
+  const aceitarDemanda = async (osId) => { try { await axios.put(`/api/os/${osId}/pegar-demanda`); alert("✅ Rota confirmada!"); setAbaMedidor('minhas'); carregarOrdens() } catch (e) {} }
+  const marcarChegada = async (osId) => { try { await axios.put(`/api/os/${osId}/cheguei`); alert("📍 Check-in realizado! Loja notificada."); carregarOrdens() } catch (error) { alert("⚠️ Erro ao registrar chegada."); } }
   const entregarMedicao = async (osId, arquivoURL, mat, obs) => { 
     try { 
       const materialExtra = mat ? `Material: ${mat}` : '';
       const observacaoExtra = obs ? ` | Obs: ${obs}` : '';
-      await axios.put(`http://localhost:8080/api/os/${osId}/entregar`, { caminho_medicao: arquivoURL, material_medicao: materialExtra + observacaoExtra }); 
+      await axios.put(`/api/os/${osId}/entregar`, { caminho_medicao: arquivoURL, material_medicao: materialExtra + observacaoExtra }); 
       alert("🎉 Medição entregue com sucesso!"); setAbaMedidor('historico'); carregarOrdens() 
     } catch (e) { alert("Erro de comunicação com o servidor.") } 
   }

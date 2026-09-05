@@ -88,7 +88,7 @@ export default function MagicLink({ token }) {
   useEffect(() => {
     console.log(`🚀 [FRONTEND] 1. Iniciando carregamento do Magic Link. Token da URL: ${token}`);
 
-    fetch(`http://localhost:8080/magic/${token}`)
+    fetch(`/magic/${token}`)
       .then(res => {
         console.log(`📡 [FRONTEND] 2. Backend respondeu com Status HTTP: ${res.status}`);
         if (!res.ok) throw new Error('Link inválido ou expirado');
@@ -132,7 +132,7 @@ export default function MagicLink({ token }) {
     setEnviando(true)
     try {
       const pacoteCompleto = { geral: briefingGeral, ambientes: briefingAmbientes }
-      await axios.put(`http://localhost:8080/api/magic/${token}/aceitar`, { dados_json: JSON.stringify(pacoteCompleto) })
+      await axios.put(`/api/magic/${token}/aceitar`, { dados_json: JSON.stringify(pacoteCompleto) })
       setShowForm(false); setAceito(true)
     } catch (error) { alert("Erro ao enviar formulário.") } 
     finally { setEnviando(false) }

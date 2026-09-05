@@ -23,13 +23,13 @@ func UploadArquivo(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"erro": "Falha ao salvar arquivo no disco."})
 	}
 
-	// Base URL configurável ou fallback para localhost:8080
-	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
+	// Base URL configurável ou caminho relativo /uploads/
+	baseURL := strings.TrimRight(os.Getenv("BASE_URL"), "/")
+	var urlPublica string
+	if baseURL != "" {
+		urlPublica = fmt.Sprintf("%s/uploads/%s", baseURL, nomeUnico)
+	} else {
+		urlPublica = fmt.Sprintf("/uploads/%s", nomeUnico)
 	}
-	baseURL = strings.TrimRight(baseURL, "/")
-
-	urlPublica := fmt.Sprintf("%s/uploads/%s", baseURL, nomeUnico)
 	return c.Status(200).JSON(fiber.Map{"url": urlPublica})
 }
