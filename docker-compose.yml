@@ -1,14 +1,49 @@
 version: '3.8'
 
 services:
-  app:
-    build: . # Diz ao Docker para ler o Dockerfile que criamos acima
-    container_name: sgm_app
-    volumes:
-      - .:/workspace # Espelha a pasta do seu Windows para dentro do container
-    extra_hosts:
-      - "host.docker.internal:host-gateway" # Permite que o Go acesse o seu Postgres local
+  db:
+    image: postgres:15-alpine
+    container_name: sgm_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-sgm_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sgm_password}
+      POSTGRES_DB: ${DB_NAME:-sgm_db}
     ports:
-      - "8080:8080" # Porta do Backend (Go)
-      - "5173:5173" # Porta do Frontend (Vite/React)
-    command: sleep infinity # Mantém o container ligado rodando em segundo plano
+      - "${DB_PORT_EXTERNAL:-5434}:5432"
+    volumes:
+      - sgm_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-sgm_user} -d ${DB_NAME:-sgm_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  app:
+    build: .
+    container_name: sgm_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/workspace
+      - sgm_uploads:/workspace/BACKEND/uploads
+    ports:
+      - "${BACKEND_PORT:-8085}:8080"
+      - "${FRONTEND_PORT:-5175}:5173"
+    environment:
+      - DB_DSN=host=db user=${DB_USER:-sgm_user} password=${DB_PASSWORD:-sgm_password} dbname=${DB_NAME:-sgm_db} port=5432 sslmode=disable TimeZone=America/Sao_Paulo
+      - JWT_SECRET=${JWT_SECRET:-sgm_super_secreto_2026}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-COLOQUE_SUA_API_KEY_AQUI}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - BASE_URL=${BASE_URL:-http://100.95.28.45:8085}
+    command: bash /workspace/start.sh
+
+volumes:
+  sgm_pg_data:
+    name: sgm_postgres_data
+  sgm_uploads:
+    name: sgm_uploads_data

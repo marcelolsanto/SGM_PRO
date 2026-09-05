@@ -1,0 +1,47 @@
+name: CI/CD SGM_PRO Homeserver
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Homeserver
+    runs-on: self-hosted
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Prepare and Deploy Containers
+        run: |
+          echo "========================================="
+          echo "🚀 INICIANDO DEPLOY SGM.PRO NO HOMESERVER"
+          echo "========================================="
+
+          chmod +x start.sh || true
+
+          # Garante que o arquivo .env do backend existe
+          if [ ! -f BACKEND/.env ]; then
+            if [ -f BACKEND/.env.example ]; then
+              cp BACKEND/.env.example BACKEND/.env
+              # Ajusta DSN para apontar para o container do banco na rede docker
+              sed -i 's/host=localhost/host=db/g' BACKEND/.env || true
+            fi
+          fi
+
+          echo "🐳 Atualizando e recriando containers Docker..."
+          docker compose down || true
+          docker compose up -d --build --force-recreate
+
+          echo "⏳ Aguardando estabilização dos serviços..."
+          sleep 12
+          docker compose ps
+
+          echo "========================================="
+          echo "✅ SGM.PRO IMPLANTADO COM SUCESSO!"
+          echo "🌐 Frontend: http://100.95.28.45:5175"
+          echo "🔧 Backend:  http://100.95.28.45:8085"
+          echo "========================================="
