@@ -123,6 +123,18 @@ type DetalhesRota struct {
 	GoogleMapsURL  string      `json:"google_maps_url"`
 }
 
+// DistanciaHaversineKm calcula a distância em linha reta entre dois pontos em km
+func DistanciaHaversineKm(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371.0
+	dLat := (lat2 - lat1) * (math.Pi / 180.0)
+	dLon := (lon2 - lon1) * (math.Pi / 180.0)
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*(math.Pi/180.0))*math.Cos(lat2*(math.Pi/180.0))*
+			math.Sin(dLon/2)*math.Sin(dLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return R * c
+}
+
 // ObterDetalhesRota busca trajeto viário completo com coordenadas, km e duração
 func ObterDetalhesRota(lat1, lon1, lat2, lon2 float64) (*DetalhesRota, error) {
 	if lat1 == 0 && lon1 == 0 {
@@ -132,23 +144,44 @@ func ObterDetalhesRota(lat1, lon1, lat2, lon2 float64) (*DetalhesRota, error) {
 		lat2, lon2 = -15.775440, -47.779763 // Paranoá como destino padrão
 	}
 
-	client := &http.Client{Timeout: 8 * time.Second}
+	fallbackDetalhes := func() *DetalhesRota {
+		km := math.Round(DistanciaHaversineKm(lat1, lon1, lat2, lon2)*1.35*10) / 10
+		if km < 1.0 {
+			km = 1.0
+		}
+		dur := int(math.Round((km / 35.0) * 60.0))
+		if dur < 1 {
+			dur = 1
+		}
+		tarifa, _, _ := calcularTarifaUber(km, float64(dur))
+		mapsURL := fmt.Sprintf("https://www.google.com/maps/dir/?api=1&origin=%f,%f&destination=%f,%f", lat1, lon1, lat2, lon2)
+		return &DetalhesRota{
+			DistanciaKm:    km,
+			DuracaoMinutos: dur,
+			Tarifa:         tarifa,
+			Coordenadas:    [][]float64{{lat1, lon1}, {lat2, lon2}},
+			NomeVia:        "Trajeto Direto",
+			GoogleMapsURL:  mapsURL,
+		}
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
 	reqURL := fmt.Sprintf("https://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?overview=full&geometries=geojson", lon1, lat1, lon2, lat2)
 	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
-		return nil, err
+		return fallbackDetalhes(), nil
 	}
 	req.Header.Set("User-Agent", "SGM_PRO_FieldService/1.0 (contato@sgmpro.com.br)")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return fallbackDetalhes(), nil
 	}
 	defer resp.Body.Close()
 
 	var osrm osrmFullResponse
 	if err := json.NewDecoder(resp.Body).Decode(&osrm); err != nil || osrm.Code != "Ok" || len(osrm.Routes) == 0 {
-		return nil, fmt.Errorf("falha ao obter rota do servidor viário")
+		return fallbackDetalhes(), nil
 	}
 
 	route := osrm.Routes[0]
@@ -232,6 +265,92 @@ func ObterRotaMultiParadas(origemLat, origemLon float64, paradas []ParadaRota) (
 		origemLon = FallbackLonBSB
 	}
 
+	fallbackMultiRota := func() *RotaMultiParadas {
+		var coordsLeaflet [][]float64
+		coordsLeaflet = append(coordsLeaflet, []float64{origemLat, origemLon})
+		var trechos []TrechoRota
+		totalTarifa := 0.0
+		totalKm := 0.0
+		totalDur := 0
+		totalTempoObra := 0
+
+		prevLat := origemLat
+		prevLon := origemLon
+
+		for i, p := range paradas {
+			pLat := p.Latitude
+			pLon := p.Longitude
+			if pLat == 0 && pLon == 0 {
+				pLat = FallbackLatBSB
+				pLon = FallbackLonBSB
+			}
+			coordsLeaflet = append(coordsLeaflet, []float64{pLat, pLon})
+
+			legKm := math.Round(DistanciaHaversineKm(prevLat, prevLon, pLat, pLon)*1.35*10) / 10
+			if legKm < 1.0 {
+				legKm = 1.0
+			}
+			legDur := int(math.Round((legKm / 35.0) * 60.0))
+			if legDur < 1 {
+				legDur = 1
+			}
+			legTarifa, _, _ := calcularTarifaUber(legKm, float64(legDur))
+
+			totalKm += legKm
+			totalDur += legDur
+			totalTarifa += legTarifa
+
+			origNome := "Sua Posição (Medidor)"
+			if i > 0 {
+				origNome = fmt.Sprintf("Parada %d: %s", i, paradas[i-1].ClienteNome)
+			}
+			destNome := fmt.Sprintf("Parada %d: %s", i+1, p.ClienteNome)
+
+			trechos = append(trechos, TrechoRota{
+				Indice:         i + 1,
+				OrigemNome:     origNome,
+				DestinoNome:    destNome,
+				DistanciaKm:    legKm,
+				DuracaoMinutos: legDur,
+				NomeVia:        "Via Principal",
+				TarifaEstimada: legTarifa,
+			})
+
+			tempoObra := p.TempoEstimadoMin
+			if tempoObra <= 0 {
+				tempoObra = 60
+			}
+			totalTempoObra += tempoObra
+
+			prevLat = pLat
+			prevLon = pLon
+		}
+
+		var gmapsURL string
+		if len(paradas) == 1 {
+			gmapsURL = fmt.Sprintf("https://www.google.com/maps/dir/?api=1&origin=%f,%f&destination=%f,%f", origemLat, origemLon, paradas[0].Latitude, paradas[0].Longitude)
+		} else {
+			orig := fmt.Sprintf("%f,%f", origemLat, origemLon)
+			dest := fmt.Sprintf("%f,%f", paradas[len(paradas)-1].Latitude, paradas[len(paradas)-1].Longitude)
+			var intermediate []string
+			for i := 0; i < len(paradas)-1; i++ {
+				intermediate = append(intermediate, fmt.Sprintf("%f,%f", paradas[i].Latitude, paradas[i].Longitude))
+			}
+			gmapsURL = fmt.Sprintf("https://www.google.com/maps/dir/?api=1&origin=%s&destination=%s&waypoints=%s", orig, dest, strings.Join(intermediate, "|"))
+		}
+
+		return &RotaMultiParadas{
+			TotalKm:           math.Round(totalKm*10) / 10,
+			TotalDuracaoMin:   totalDur,
+			TotalTarifa:       math.Round(totalTarifa*100) / 100,
+			TotalTempoObraMin: totalTempoObra,
+			Coordenadas:       coordsLeaflet,
+			Trechos:           trechos,
+			Paradas:           paradas,
+			GoogleMapsURL:     gmapsURL,
+		}
+	}
+
 	// Monta a string de coordenadas para o OSRM: lon0,lat0;lon1,lat1;lon2,lat2...
 	coordPairs := []string{fmt.Sprintf("%f,%f", origemLon, origemLat)}
 	for _, p := range paradas {
@@ -245,22 +364,22 @@ func ObterRotaMultiParadas(origemLat, origemLon float64, paradas []ParadaRota) (
 	}
 
 	reqURL := fmt.Sprintf("https://router.project-osrm.org/route/v1/driving/%s?overview=full&geometries=geojson", strings.Join(coordPairs, ";"))
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: 3 * time.Second}
 	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
-		return nil, err
+		return fallbackMultiRota(), nil
 	}
 	req.Header.Set("User-Agent", "SGM_PRO_FieldService/1.0 (contato@sgmpro.com.br)")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return fallbackMultiRota(), nil
 	}
 	defer resp.Body.Close()
 
 	var osrm osrmFullResponse
 	if err := json.NewDecoder(resp.Body).Decode(&osrm); err != nil || osrm.Code != "Ok" || len(osrm.Routes) == 0 {
-		return nil, fmt.Errorf("falha ao calcular rota multi-paradas")
+		return fallbackMultiRota(), nil
 	}
 
 	route := osrm.Routes[0]

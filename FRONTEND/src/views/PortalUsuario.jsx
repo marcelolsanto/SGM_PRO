@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import axios from 'axios'
 import NovaOsModal from '../components/NovaOsModal'
 import ModalPagamentoPix from '../components/ModalPagamentoPix'
+
 import TabelaCaixaMedidor from '../components/TabelaCaixaMedidor'
 import CardDemandaMedidor from '../components/CardDemandaMedidor'
 import CardRotaMedidor from '../components/CardRotaMedidor'
@@ -20,407 +21,6 @@ function calcularDistanciaKm(lat1, lon1, lat2, lon2) {
   return parseFloat((R * c).toFixed(1));
 }
 
-// 📋 Modal Detalhes Completos da OS
-function ModalDetalhesOS({ os, onClose, formatarMoeda, onAceitar, onRecusar, onAdicionarRota, onMarcarChegada, onEntregar }) {
-  if (!os) return null;
-
-  const renderBriefingSeguro = (dadosJson) => {
-    if (!dadosJson) return <p className="text-slate-500 italic text-xs">Sem briefing cadastrado.</p>;
-    try {
-      const d = typeof dadosJson === 'string' ? JSON.parse(dadosJson) : dadosJson;
-      const g = d.geral || {};
-      return (
-        <div className="space-y-2 text-xs">
-          {g.data_agendada && (
-            <div className="bg-emerald-950/40 border border-emerald-800/40 p-2.5 rounded-xl text-emerald-400 font-bold flex items-center gap-2">
-              <span>📅</span> Data Agendada pelo Cliente: {g.data_agendada} {g.hora_agendada ? `às ${g.hora_agendada}` : ''}
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-2 text-slate-300">
-            <div className="bg-slate-950 p-2 rounded-lg border border-slate-800"><span className="text-slate-500 block text-[10px] uppercase font-bold">Chaves na Obra:</span> {String(g.possui_chave || 'Não informado')}</div>
-            <div className="bg-slate-950 p-2 rounded-lg border border-slate-800"><span className="text-slate-500 block text-[10px] uppercase font-bold">Piso/Revestimento:</span> {String(g.revestimento_pronto || 'Não informado')}</div>
-          </div>
-        </div>
-      );
-    } catch(e) {
-      return <p className="text-slate-400 text-xs">{String(dadosJson)}</p>;
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="p-5 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="bg-blue-600/20 text-blue-400 border border-blue-500/30 text-xs font-mono font-bold px-2 py-0.5 rounded-lg">
-                OS #{String(os.id).padStart(4, '0')}
-              </span>
-              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${os.status === 'CONCLUIDO' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                {os.status?.replace('_', ' ')}
-              </span>
-            </div>
-            <h3 className="text-lg font-black text-white mt-1">{os.cliente_nome}</h3>
-          </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-xl text-xs font-bold transition-colors">
-            ✕ Fechar
-          </button>
-        </div>
-
-        {/* Corpo Scrollável */}
-        <div className="p-5 overflow-y-auto custom-scrollbar space-y-4 text-xs">
-          {/* Endereço e Loja */}
-          <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2">
-            <p className="text-slate-300 flex items-start gap-2">
-              <span className="text-base">📍</span> 
-              <span><strong className="text-white block">Endereço da Obra:</strong> {os.endereco_obra}</span>
-            </p>
-            {os.loja && (
-              <p className="text-slate-400 flex items-center gap-2 pt-1 border-t border-slate-800/80">
-                <span>🏢</span> <strong>Loja Parceira:</strong> {os.loja.nome_fantasia} {os.loja.telefone ? `(${os.loja.telefone})` : ''}
-              </p>
-            )}
-          </div>
-
-          {/* Resumo Financeiro e Tempos */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ganho do Medidor</p>
-              <p className="text-base font-black text-emerald-400 mt-0.5">{formatarMoeda(os.custo_medidor || 0)}</p>
-            </div>
-            <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tempo de Medição</p>
-              <p className="text-base font-black text-blue-400 mt-0.5">~{os.tempo_estimado_min || 60} min</p>
-            </div>
-            <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 col-span-2 sm:col-span-1">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Horário Agendado</p>
-              <p className="text-base font-black text-amber-400 mt-0.5">⏰ {os.hora_agendada || 'A combinar'}</p>
-            </div>
-          </div>
-
-          {/* Ambientes */}
-          <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-              <span>🛋️</span> Ambientes ({os.ambientes?.length || 0})
-            </p>
-            <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
-              {os.ambientes?.map((amb, idx) => (
-                <div key={idx} className="bg-slate-900 p-2 rounded-xl border border-slate-800/80 flex justify-between items-center text-slate-300">
-                  <span className="font-medium">{idx + 1}. {amb.nome} ({amb.tipo_ambiente || 'Padrão'})</span>
-                  <span className="text-slate-400 font-mono font-bold">{amb.area_estimada_m2} m²</span>
-                </div>
-              ))}
-              {(!os.ambientes || os.ambientes.length === 0) && (
-                <p className="text-slate-500 italic">Nenhum ambiente discriminado.</p>
-              )}
-            </div>
-          </div>
-
-          {/* Briefing do Cliente */}
-          <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-              <span>📋</span> Briefing do Cliente
-            </p>
-            {os.briefing ? renderBriefingSeguro(os.briefing.dados_json) : (
-              <p className="text-slate-500 italic text-xs">Cliente ainda não finalizou o formulário de briefing.</p>
-            )}
-          </div>
-        </div>
-
-        {/* Footer com Ações */}
-        <div className="p-4 bg-slate-950 border-t border-slate-800 flex flex-wrap gap-2 justify-end">
-          <a
-            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(os.endereco_obra)}`}
-            target="_blank"
-            rel="noreferrer"
-            className="px-4 py-2.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
-          >
-            <span>🗺️</span> Google Maps
-          </a>
-          <a
-            href={`https://waze.com/ul?q=${encodeURIComponent(os.endereco_obra)}`}
-            target="_blank"
-            rel="noreferrer"
-            className="px-4 py-2.5 bg-sky-600/20 hover:bg-sky-600/30 text-sky-400 border border-sky-500/30 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
-          >
-            <span>🚙</span> Waze
-          </a>
-          
-          {os.status === 'PENDENTE_LOJA' && (
-            <>
-              {onRecusar && (
-                <button
-                  onClick={() => { onRecusar(os.id); onClose(); }}
-                  className="px-4 py-2.5 bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 rounded-xl text-xs font-bold transition-colors"
-                >
-                  ❌ Recusar Demanda
-                </button>
-              )}
-              {onAdicionarRota && (
-                <button
-                  onClick={() => { onAdicionarRota(os.id); onClose(); }}
-                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-colors shadow-lg"
-                >
-                  ➕ Adicionar à Rota
-                </button>
-              )}
-              {onAceitar && (
-                <button
-                  onClick={() => { onAceitar(os.id); onClose(); }}
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-colors shadow-lg"
-                >
-                  ✅ Aceitar Medição
-                </button>
-              )}
-            </>
-          )}
-
-          {os.status === 'EM_ROTA' && onMarcarChegada && (
-            <button
-              onClick={() => { onMarcarChegada(os.id); onClose(); }}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-colors shadow-lg flex items-center gap-1.5"
-            >
-              <span>📍</span> Informar Chegada no Local
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// 📁 Modal de Documentos da Medição (Edição / Acrescentar Fotos, Promob, Croqui, PDF)
-function ModalDocumentosMedicao({ os, onClose, onSalvarSucesso }) {
-  if (!os) return null;
-
-  const [caminhoMedicao, setCaminhoMedicao] = useState(os.caminho_medicao || '');
-  const [materialMedicao, setMaterialMedicao] = useState(os.material_medicao || '');
-  const [arquivoPromob, setArquivoPromob] = useState(os.arquivo_promob || '');
-  const [desenhoCroqui, setDesenhoCroqui] = useState(os.desenho_croqui || '');
-  
-  const [fotosList, setFotosList] = useState(() => {
-    try {
-      const arr = JSON.parse(os.fotos_medicao || '[]');
-      return Array.isArray(arr) ? arr : [];
-    } catch(e) {
-      return [];
-    }
-  });
-
-  const [uploadingTipo, setUploadingTipo] = useState(null);
-  const [salvando, setSalvando] = useState(false);
-
-  const handleUploadGenerico = async (e, tipo) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setUploadingTipo(tipo);
-    const fd = new FormData();
-    fd.append('arquivo', file);
-    try {
-      const res = await axios.post('/api/upload', fd);
-      const url = res.data.url;
-      if (tipo === 'pdf') setCaminhoMedicao(url);
-      else if (tipo === 'promob') setArquivoPromob(url);
-      else if (tipo === 'croqui') setDesenhoCroqui(url);
-      else if (tipo === 'foto') setFotosList(prev => [...prev, url]);
-    } catch(err) {
-      alert("Falha no upload do arquivo. Verifique a conexão.");
-    } finally {
-      setUploadingTipo(null);
-    }
-  };
-
-  const removerFoto = (index) => {
-    setFotosList(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const salvarDocumentos = async () => {
-    setSalvando(true);
-    try {
-      await axios.put(`/api/os/${os.id}/documentos`, {
-        caminho_medicao: caminhoMedicao,
-        material_medicao: materialMedicao,
-        fotos_medicao: JSON.stringify(fotosList),
-        arquivo_promob: arquivoPromob,
-        desenho_croqui: desenhoCroqui
-      });
-      alert("✅ Documentos de medição atualizados com sucesso e enviados à loja!");
-      if (onSalvarSucesso) onSalvarSucesso();
-      onClose();
-    } catch(err) {
-      alert("Erro ao salvar documentos: " + (err.response?.data?.erro || err.message));
-    } finally {
-      setSalvando(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="p-5 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 text-xs font-mono font-bold px-2 py-0.5 rounded-lg">
-                OS #{String(os.id).padStart(4, '0')}
-              </span>
-              <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase px-2 py-0.5 rounded-md">
-                Concluído
-              </span>
-            </div>
-            <h3 className="text-lg font-black text-white mt-1">Documentos e Arquivos Técnicos de Medição</h3>
-            <p className="text-xs text-slate-400">{os.cliente_nome} • {os.endereco_obra}</p>
-          </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-xl text-xs font-bold">
-            ✕ Fechar
-          </button>
-        </div>
-
-        {/* Conteúdo com Uploads */}
-        <div className="p-5 overflow-y-auto custom-scrollbar space-y-5 text-xs">
-          {/* 1. Relatório Técnico / Planta (PDF) */}
-          <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-black text-white text-xs flex items-center gap-2">
-                <span>📄</span> Relatório Técnico da Medição (PDF)
-              </span>
-              {caminhoMedicao && (
-                <a href={caminhoMedicao} target="_blank" rel="noreferrer" className="text-emerald-400 font-bold hover:underline flex items-center gap-1">
-                  <span>↗</span> Visualizar PDF Atual
-                </a>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="flex-1 bg-slate-900 hover:bg-slate-850 border border-dashed border-slate-700 hover:border-blue-500 p-3 rounded-xl cursor-pointer text-center transition-colors">
-                <span className="text-slate-300 font-bold block">
-                  {uploadingTipo === 'pdf' ? 'Enviando PDF...' : caminhoMedicao ? '📎 Substituir PDF de Medição' : '➕ Anexar Relatório PDF'}
-                </span>
-                <span className="text-slate-500 text-[10px] block mt-0.5">Formatos aceitos: .pdf</span>
-                <input type="file" accept=".pdf" className="hidden" onChange={e => handleUploadGenerico(e, 'pdf')} disabled={Boolean(uploadingTipo)} />
-              </label>
-            </div>
-          </div>
-
-          {/* 2. Fotos da Medição / Obra */}
-          <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-black text-white text-xs flex items-center gap-2">
-                <span>📷</span> Fotos da Obra e Medição ({fotosList.length})
-              </span>
-              <label className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded-xl cursor-pointer text-[11px] transition-colors shadow">
-                {uploadingTipo === 'foto' ? 'Enviando...' : '+ Adicionar Foto'}
-                <input type="file" accept="image/*" className="hidden" onChange={e => handleUploadGenerico(e, 'foto')} disabled={Boolean(uploadingTipo)} />
-              </label>
-            </div>
-
-            {fotosList.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
-                {fotosList.map((foto, idx) => (
-                  <div key={idx} className="relative group rounded-xl overflow-hidden border border-slate-800 bg-slate-900 aspect-video flex items-center justify-center">
-                    <img src={foto} alt={`Foto ${idx+1}`} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                      <a href={foto} target="_blank" rel="noreferrer" className="p-1.5 bg-blue-600 text-white rounded-lg text-xs" title="Ver foto">
-                        🔍
-                      </a>
-                      <button onClick={() => removerFoto(idx)} className="p-1.5 bg-red-600 text-white rounded-lg text-xs" title="Remover">
-                        🗑️
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-slate-500 italic mt-2">Nenhuma foto anexada até o momento.</p>
-            )}
-          </div>
-
-          {/* 3. Desenho / Croqui Digitalizado & Promob */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Foto do Croqui */}
-            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-black text-white text-xs flex items-center gap-1.5">
-                  <span>📐</span> Foto do Croqui / Desenho
-                </span>
-                {desenhoCroqui && (
-                  <a href={desenhoCroqui} target="_blank" rel="noreferrer" className="text-emerald-400 font-bold hover:underline">
-                    Ver ↗
-                  </a>
-                )}
-              </div>
-              {desenhoCroqui && (
-                <div className="mb-2 rounded-xl overflow-hidden border border-slate-800 h-28 bg-slate-900 flex items-center justify-center">
-                  <img src={desenhoCroqui} alt="Croqui" className="w-full h-full object-cover" />
-                </div>
-              )}
-              <label className="mt-auto bg-slate-900 hover:bg-slate-850 border border-dashed border-slate-700 hover:border-blue-500 p-2.5 rounded-xl cursor-pointer text-center transition-colors">
-                <span className="text-slate-300 font-bold block text-[11px]">
-                  {uploadingTipo === 'croqui' ? 'Enviando...' : desenhoCroqui ? 'Substituir Foto do Croqui' : '➕ Anexar Foto do Desenho'}
-                </span>
-                <input type="file" accept="image/*,.pdf" className="hidden" onChange={e => handleUploadGenerico(e, 'croqui')} disabled={Boolean(uploadingTipo)} />
-              </label>
-            </div>
-
-            {/* Arquivo Promob */}
-            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-black text-white text-xs flex items-center gap-1.5">
-                  <span>💻</span> Arquivo Promob / CAD
-                </span>
-                {arquivoPromob && (
-                  <a href={arquivoPromob} target="_blank" rel="noreferrer" className="text-emerald-400 font-bold hover:underline">
-                    Baixar ↗
-                  </a>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mb-3">
-                Arquivo .promob ou compactado (.zip) com a modelagem digital da medição.
-              </p>
-              <label className="mt-auto bg-slate-900 hover:bg-slate-850 border border-dashed border-slate-700 hover:border-blue-500 p-2.5 rounded-xl cursor-pointer text-center transition-colors">
-                <span className="text-slate-300 font-bold block text-[11px]">
-                  {uploadingTipo === 'promob' ? 'Enviando...' : arquivoPromob ? 'Substituir Arquivo Promob' : '➕ Anexar Arquivo Promob'}
-                </span>
-                <input type="file" accept=".promob,.dwg,.dxf,.zip,.rar" className="hidden" onChange={e => handleUploadGenerico(e, 'promob')} disabled={Boolean(uploadingTipo)} />
-              </label>
-            </div>
-          </div>
-
-          {/* 4. Observações Técnicas e Materiais */}
-          <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              📝 Observações Técnicas e Materiais Gastos
-            </label>
-            <textarea
-              rows="3"
-              value={materialMedicao}
-              onChange={e => setMaterialMedicao(e.target.value)}
-              placeholder="Ex: Utilizado gabarito no canto esquerdo da pia. Ponto de água necessita de corte de 50mm..."
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white text-xs outline-none focus:border-blue-500 resize-none"
-            />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors">
-            Cancelar
-          </button>
-          <button
-            onClick={salvarDocumentos}
-            disabled={salvando || Boolean(uploadingTipo)}
-            className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black transition-transform hover:scale-105 shadow-lg shadow-emerald-600/30"
-          >
-            {salvando ? 'Salvando Documentos...' : '💾 Salvar Documentos e Atualizar Loja'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-
 // 🗺️ Radar de Campo com Roteiro Diário Multi-Paradas (Leaflet + Google Maps)
 function RadarMapaInterativo({
   medidor,
@@ -428,12 +28,10 @@ function RadarMapaInterativo({
   demandasPendentes = [],
   ordensEmRota = [],
   aceitarDemanda,
-  recusarDemanda,
   formatarMoeda,
   onAtualizarLocalizacao,
   osSelecionada,
-  onAtualizarDados,
-  onAbrirDetalhesOS
+  onAtualizarDados
 }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -442,7 +40,6 @@ function RadarMapaInterativo({
   const singleRouteGroupRef = useRef(null);
   const tileLayerRef = useRef(null);
 
-  // Modo diurno padrão (Google Maps Ruas e Satélite)
   const [tipoMapa, setTipoMapa] = useState('google_streets');
 
   // Coordenadas padrão em Brasília - DF (Marco Zero / Esplanada)
@@ -472,7 +69,7 @@ function RadarMapaInterativo({
         setPosicaoMedidor(novaPos);
         if (onAtualizarLocalizacao) onAtualizarLocalizacao(novaPos.lat, novaPos.lon);
       },
-      (err) => console.warn("GPS inicial:", err.message),
+      (err) => console.warn("GPS inicial não obtido, usando base Brasília:", err.message),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 
@@ -516,7 +113,7 @@ function RadarMapaInterativo({
     };
   }, []);
 
-  // 2.1 Camadas do Mapa Diurno (Google Maps Ruas e Satélite - Sem Dark Mode)
+  // 2.1 Camadas do Mapa (Google Maps Ruas, Satélite e Dark Mode)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !window.L) return;
@@ -535,6 +132,13 @@ function RadarMapaInterativo({
     if (tipoMapa === 'google_sat') {
       url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
       options.attribution = '&copy; Google Maps Satélite';
+    } else if (tipoMapa === 'dark') {
+      url = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+      options = {
+        maxZoom: 19,
+        subdomains: 'abcd',
+        attribution: '&copy; OpenStreetMap &copy; CARTO'
+      };
     }
 
     tileLayerRef.current = window.L.tileLayer(url, options).addTo(map);
@@ -598,19 +202,6 @@ function RadarMapaInterativo({
     }
   };
 
-  // 5.1 Remover Parada do Roteiro
-  const handleRemoverParada = async (osId) => {
-    if (!window.confirm("Deseja remover esta parada do seu roteiro de hoje? Ela voltará para a lista de demandas disponíveis.")) return;
-    try {
-      await axios.put(`/api/rotas/remover/${osId}`);
-      alert("✅ Parada removida do roteiro com sucesso!");
-      await carregarRoteiro();
-      if (onAtualizarDados) onAtualizarDados();
-    } catch (err) {
-      alert("Erro ao remover parada: " + (err.response?.data?.erro || err.message));
-    }
-  };
-
   // 6. Reordenar Paradas (Subir / Descer na Ordem do Dia)
   const handleMoverParada = async (indexOrigem, direcao) => {
     if (!roteiroDia?.paradas) return;
@@ -620,7 +211,7 @@ function RadarMapaInterativo({
 
     const [movido] = paradas.splice(indexOrigem, 1);
     paradas.splice(indexDestino, 0, movido);
-    const ordemIds = paradas.map(p => p.os_id || p.id);
+    const ordemIds = paradas.map(p => p.id);
 
     try {
       await axios.put('/api/rotas/reordenar', { ordem_ids: ordemIds });
@@ -653,25 +244,7 @@ function RadarMapaInterativo({
     }
   };
 
-  // 8. Confirmar / Aceitar Sugestão de Rota
-  const handleAceitarSugestaoRota = () => {
-    alert("✅ Sugestão de Rota confirmada! Siga a sequência das paradas para máxima eficiência.");
-  };
-
-  // Clicar em parada para centralizar no mapa e abrir OS
-  const handleClicarParada = (parada) => {
-    const lat = Number(parada.latitude || parada.latitude_obra) || -15.797101;
-    const lon = Number(parada.longitude || parada.longitude_obra) || -47.889489;
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.flyTo([lat, lon], 16, { duration: 1.2 });
-    }
-    if (onAbrirDetalhesOS) {
-      const osId = parada.os_id || parada.id;
-      onAbrirDetalhesOS(osId);
-    }
-  };
-
-  // 9. Atualização de Marcadores no Mapa Leaflet com Distribuição Correta
+  // 8. Atualização de Marcadores no Mapa Leaflet
   useEffect(() => {
     const map = mapInstanceRef.current;
     const L = window.L;
@@ -680,7 +253,7 @@ function RadarMapaInterativo({
     markersGroupRef.current.clearLayers();
     const bounds = [];
 
-    // 📍 Ícone do Medidor (GPS ao Vivo em Brasília)
+    // 📍 Ícone do Medidor (Ponto Pulsante GPS em Brasília)
     const iconeMedidor = L.divIcon({
       className: 'custom-medidor-icon',
       html: `
@@ -738,16 +311,13 @@ function RadarMapaInterativo({
       });
     }
 
-    // 🔢 Marcadores Sequenciais das Paradas do Roteiro (①, ②, ③, ④) DISTRIBUÍDOS CORRETAMENTE
+    // 🔢 Marcadores Sequenciais das Paradas do Roteiro (①, ②, ③, ④)
     if (mostrarMinhaRota) {
       const listaParadas = roteiroDia?.paradas && roteiroDia.paradas.length > 0 ? roteiroDia.paradas : ordensEmRota;
       listaParadas.forEach((parada, idx) => {
-        // 🔥 Leitura com fallback seguro para não acumular no mesmo ponto
-        const lat = Number(parada.latitude || parada.latitude_obra) || -15.797101;
-        const lon = Number(parada.longitude || parada.longitude_obra) || -47.889489;
+        const lat = Number(parada.latitude_obra) || -15.797101;
+        const lon = Number(parada.longitude_obra) || -47.889489;
         const numeroParada = idx + 1;
-        const osId = parada.os_id || parada.id;
-        const endereco = parada.endereco || parada.endereco_obra || '';
 
         const iconeParada = L.divIcon({
           className: 'custom-parada-icon',
@@ -763,10 +333,10 @@ function RadarMapaInterativo({
           iconAnchor: [20, 20]
         });
 
-        const marker = L.marker([lat, lon], { icon: iconeParada })
+        L.marker([lat, lon], { icon: iconeParada })
           .addTo(markersGroupRef.current)
           .bindPopup(`
-            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 220px;">
+            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 210px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <span style="background: #059669; color: #ffffff; font-size: 10px; font-weight: 900; padding: 2px 8px; border-radius: 999px;">
                   PARADA #${numeroParada}
@@ -774,7 +344,7 @@ function RadarMapaInterativo({
                 <span style="background: #ecfdf5; color: #059669; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px;">EM ROTA</span>
               </div>
               <strong style="color: #0f172a; font-size: 13px; display: block; margin-top: 4px;">${parada.cliente_nome}</strong>
-              <span style="color: #64748b; font-size: 11px;">📍 ${endereco}</span>
+              <span style="color: #64748b; font-size: 11px;">📍 ${parada.endereco_obra}</span>
               
               <div style="background: #f8fafc; border-radius: 8px; padding: 6px; margin: 6px 0; border: 1px solid #e2e8f0; font-size: 11px;">
                 <div style="display: flex; justify-content: space-between;">
@@ -786,37 +356,16 @@ function RadarMapaInterativo({
                   <strong style="color: #334155;">~${parada.tempo_estimado_min || 60} min</strong>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-top: 2px;">
-                  <span>Ganho Repasse:</span>
-                  <strong style="color: #059669; font-size: 12px;">${formatarMoeda(parada.custo_medidor || 0)}</strong>
+                  <span>Ganho:</span>
+                  <strong style="color: #059669;">${formatarMoeda(parada.custo_medidor)}</strong>
                 </div>
               </div>
 
-              <div style="display: flex; flex-direction: column; gap: 4px;">
-                <button id="btn-ver-os-parada-${osId}" style="width: 100%; background: #0f172a; color: #38bdf8; border: 1px solid #38bdf8; font-weight: bold; font-size: 11px; padding: 6px; border-radius: 8px; cursor: pointer;">
-                  👁️ Exibir OS Completa
-                </button>
-                <a href="https://www.google.com/maps/dir/?api=1&origin=${posicaoMedidor.lat},${posicaoMedidor.lon}&destination=${encodeURIComponent(endereco || `${lat},${lon}`)}" target="_blank" rel="noreferrer" style="display: block; text-align: center; background: #2563eb; color: #ffffff; font-weight: bold; font-size: 11px; padding: 6px; border-radius: 8px; text-decoration: none;">
-                  🗺️ Navegar (Google Maps)
-                </a>
-                <button id="btn-rem-parada-${osId}" style="width: 100%; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-weight: bold; font-size: 10px; padding: 4px; border-radius: 8px; cursor: pointer;">
-                  ❌ Remover do Roteiro
-                </button>
-              </div>
+              <a href="https://www.google.com/maps/dir/?api=1&origin=${posicaoMedidor.lat},${posicaoMedidor.lon}&destination=${encodeURIComponent(parada.endereco_obra || `${lat},${lon}`)}" target="_blank" rel="noreferrer" style="display: block; text-align: center; background: #2563eb; color: #ffffff; font-weight: bold; font-size: 11px; padding: 7px; border-radius: 8px; text-decoration: none; margin-top: 6px;">
+                🗺️ Navegar até esta Parada
+              </a>
             </div>
           `);
-
-        marker.on('popupopen', () => {
-          setTimeout(() => {
-            const btnVer = document.getElementById(`btn-ver-os-parada-${osId}`);
-            if (btnVer && onAbrirDetalhesOS) {
-              btnVer.onclick = () => onAbrirDetalhesOS(osId);
-            }
-            const btnRem = document.getElementById(`btn-rem-parada-${osId}`);
-            if (btnRem) {
-              btnRem.onclick = () => handleRemoverParada(osId);
-            }
-          }, 50);
-        });
 
         bounds.push([lat, lon]);
       });
@@ -867,56 +416,35 @@ function RadarMapaInterativo({
                 </div>
               </div>
 
-              <!-- Ações da Demanda -->
-              <div style="display: flex; flex-direction: column; gap: 4px;">
-                <button id="btn-ver-os-demanda-${os.id}" style="width: 100%; background: #0f172a; color: #38bdf8; border: 1px solid #38bdf8; padding: 6px; border-radius: 8px; font-weight: bold; font-size: 11px; cursor: pointer;">
-                  👁️ Exibir OS Completa
+              <!-- ➕ Adicionar ao Roteiro do Dia -->
+              <button id="btn-add-roteiro-${os.id}" style="width: 100%; background: #0284c7; color: #ffffff; border: none; padding: 8px; border-radius: 8px; font-weight: 800; font-size: 11px; cursor: pointer; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                ➕ Adicionar ao Roteiro de Hoje
+              </button>
+
+              ${isPago && isAgendado ? `
+                <button id="btn-aceitar-mapa-${os.id}" style="width: 100%; background: #10b981; color: #ffffff; border: none; padding: 8px; border-radius: 8px; font-weight: 900; font-size: 11px; cursor: pointer; text-transform: uppercase;">
+                  ✅ Confirmar Medição
                 </button>
-
-                <button id="btn-add-roteiro-${os.id}" style="width: 100%; background: #0284c7; color: #ffffff; border: none; padding: 7px; border-radius: 8px; font-weight: 800; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
-                  ➕ Adicionar ao Roteiro de Hoje
-                </button>
-
-                ${isPago && isAgendado ? `
-                  <button id="btn-aceitar-mapa-${os.id}" style="width: 100%; background: #10b981; color: #ffffff; border: none; padding: 7px; border-radius: 8px; font-weight: 900; font-size: 11px; cursor: pointer; text-transform: uppercase;">
-                    ✅ Confirmar Medição
-                  </button>
-                ` : `
-                  <div style="width: 100%; background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; padding: 5px; border-radius: 8px; font-weight: 700; font-size: 10px; text-align: center;">
-                    ${!isPago ? '⏳ Aguardando Pagamento' : '⏳ Aguardando Agendamento'}
-                  </div>
-                `}
-
-                ${recusarDemanda ? `
-                  <button id="btn-recusar-mapa-${os.id}" style="width: 100%; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; padding: 5px; border-radius: 8px; font-weight: bold; font-size: 10px; cursor: pointer;">
-                    ❌ Recusar Demanda
-                  </button>
-                ` : ''}
-
-                <a href="https://www.google.com/maps/dir/?api=1&origin=${posicaoMedidor.lat},${posicaoMedidor.lon}&destination=${encodeURIComponent(os.endereco_obra || `${lat},${lon}`)}" target="_blank" rel="noreferrer" style="display: block; text-align: center; color: #2563eb; font-weight: bold; font-size: 10px; margin-top: 4px; text-decoration: none;">
-                  🗺️ Abrir no Google Maps
-                </a>
-              </div>
+              ` : `
+                <div style="width: 100%; background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; padding: 6px; border-radius: 8px; font-weight: 700; font-size: 10px; text-align: center;">
+                  ${!isPago ? '⏳ Aguardando Pagamento' : '⏳ Aguardando Agendamento'}
+                </div>
+              `}
+              <a href="https://www.google.com/maps/dir/?api=1&origin=${posicaoMedidor.lat},${posicaoMedidor.lon}&destination=${encodeURIComponent(os.endereco_obra || `${lat},${lon}`)}" target="_blank" rel="noreferrer" style="display: block; text-align: center; color: #2563eb; font-weight: bold; font-size: 10px; margin-top: 6px; text-decoration: none;">
+                🗺️ Abrir no Google Maps
+              </a>
             </div>
           `);
 
         marker.on('popupopen', () => {
           setTimeout(() => {
-            const btnVer = document.getElementById(`btn-ver-os-demanda-${os.id}`);
-            if (btnVer && onAbrirDetalhesOS) {
-              btnVer.onclick = () => onAbrirDetalhesOS(os.id);
-            }
             const btnAdd = document.getElementById(`btn-add-roteiro-${os.id}`);
             if (btnAdd) {
               btnAdd.onclick = () => handleAdicionarAoRoteiro(os.id);
             }
             const btnAceitar = document.getElementById(`btn-aceitar-mapa-${os.id}`);
-            if (btnAceitar && aceitarDemanda) {
+            if (btnAceitar) {
               btnAceitar.onclick = () => aceitarDemanda(os.id);
-            }
-            const btnRecusar = document.getElementById(`btn-recusar-mapa-${os.id}`);
-            if (btnRecusar && recusarDemanda) {
-              btnRecusar.onclick = () => recusarDemanda(os.id);
             }
           }, 50);
         });
@@ -925,84 +453,66 @@ function RadarMapaInterativo({
       });
     }
 
-    // Ajusta o enquadramento do mapa se houver marcadores
-    if (bounds.length > 1 && !osSelecionada) {
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+    if (bounds.length > 0) {
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 14 });
     }
-  }, [posicaoMedidor.lat, posicaoMedidor.lon, lojas, demandasPendentes, ordensEmRota, roteiroDia, mostrarLojas, mostrarMinhaRota, mostrarDemandas, filtroRaio]);
+  }, [posicaoMedidor, lojas, demandasPendentes, roteiroDia, mostrarLojas, mostrarMinhaRota, mostrarDemandas, filtroRaio]);
 
-  // 10. Efeito para Focar em OS Selecionada
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map || !osSelecionada) return;
-
-    const lat = Number(osSelecionada.latitude_obra || osSelecionada.latitude);
-    const lon = Number(osSelecionada.longitude_obra || osSelecionada.longitude);
-    if (lat && lon) {
-      map.flyTo([lat, lon], 15, { duration: 1.5 });
-    }
-  }, [osSelecionada]);
-
-  // Botão: Centralizar no Medidor
   const centralizarEmMim = () => {
-    const map = mapInstanceRef.current;
-    if (map && posicaoMedidor.lat && posicaoMedidor.lon) {
-      map.flyTo([posicaoMedidor.lat, posicaoMedidor.lon], 15, { duration: 1.2 });
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setView([posicaoMedidor.lat, posicaoMedidor.lon], 14, { animate: true });
     }
   };
 
-  // Demandas pendentes ordenadas por proximidade
   const demandasOrdenadasProximidade = [...demandasPendentes].map(os => {
     const lat = Number(os.latitude_obra) || -15.775440;
     const lon = Number(os.longitude_obra) || -47.779763;
     const dist = calcularDistanciaKm(posicaoMedidor.lat, posicaoMedidor.lon, lat, lon);
-    return { ...os, distancia_km: dist };
+    return { ...os, distancia_km: dist, lat, lon };
   }).sort((a, b) => a.distancia_km - b.distancia_km);
 
   return (
-    <div className="relative w-full h-[calc(100vh-210px)] min-h-[580px] rounded-3xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col">
-      {/* 🧭 Barra Superior de Controles e Filtros do Radar */}
-      <div className="bg-slate-900/95 backdrop-blur border-b border-slate-800 p-3 px-4 flex flex-wrap items-center justify-between gap-3 z-10">
+    <div className="relative w-full h-[72vh] md:h-[80vh] bg-slate-950 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col">
+      {/* 🧭 Barra Superior de Controles */}
+      <div className="p-3 bg-slate-900/90 backdrop-blur border-b border-slate-800 flex flex-wrap justify-between items-center gap-3 z-10">
         <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-black text-white flex items-center gap-1.5 mr-2">
+            <span className="text-blue-400">🗺️</span> Radar Logístico (Brasília)
+          </span>
+
           <button
             onClick={() => setMostrarMinhaRota(!mostrarMinhaRota)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              mostrarMinhaRota ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-950 border border-slate-800 text-slate-400'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${mostrarMinhaRota ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-500'}`}
           >
-            <span>📍</span> Paradas do Dia ({ordensEmRota.length})
+            <span>🛵</span> Roteiro ({roteiroDia?.paradas?.length || ordensEmRota.length})
           </button>
 
           <button
             onClick={() => setMostrarDemandas(!mostrarDemandas)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              mostrarDemandas ? 'bg-amber-500 text-slate-950 shadow-md font-black' : 'bg-slate-950 border border-slate-800 text-slate-400'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${mostrarDemandas ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-500'}`}
           >
             <span>🚨</span> Demandas ({demandasPendentes.length})
           </button>
 
           <button
             onClick={() => setMostrarLojas(!mostrarLojas)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              mostrarLojas ? 'bg-sky-600 text-white shadow-md' : 'bg-slate-950 border border-slate-800 text-slate-400'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${mostrarLojas ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-800 text-slate-500'}`}
           >
             <span>🏢</span> Lojas ({lojas.length})
           </button>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Seletor de Mapa Diurno (Sem Dark Mode) */}
           <div className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800">
-            <span className="text-[10px] text-slate-500 uppercase font-black">Modo:</span>
+            <span className="text-[10px] text-slate-500 uppercase font-black">Mapa:</span>
             <select
               value={tipoMapa}
               onChange={e => setTipoMapa(e.target.value)}
               className="bg-transparent text-xs font-bold text-amber-400 outline-none cursor-pointer"
             >
-              <option value="google_streets" className="bg-slate-900">🗺️ Google Maps (Ruas)</option>
+              <option value="google_streets" className="bg-slate-900">🗺️ Google Maps</option>
               <option value="google_sat" className="bg-slate-900">🛰️ Google Satélite</option>
+              <option value="dark" className="bg-slate-900">🌑 Dark Mode</option>
             </select>
           </div>
 
@@ -1035,7 +545,7 @@ function RadarMapaInterativo({
       <div className="flex-1 relative w-full h-full">
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-        {/* 📋 HUD / Painel Flutuante: "Meu Roteiro do Dia" (Multi-Paradas Clicável) */}
+        {/* 📋 HUD / Painel Flutuante: "Meu Roteiro do Dia" (Multi-Paradas) */}
         {roteiroDia && roteiroDia.paradas && roteiroDia.paradas.length > 0 && (
           <div className={`absolute top-4 right-4 z-20 transition-all duration-300 ${drawerRoteiroAberto ? 'w-80 md:w-96' : 'w-auto'}`}>
             {!drawerRoteiroAberto ? (
@@ -1043,11 +553,11 @@ function RadarMapaInterativo({
                 onClick={() => setDrawerRoteiroAberto(true)}
                 className="bg-slate-900/95 backdrop-blur-md border border-emerald-500/50 text-white px-4 py-2.5 rounded-2xl shadow-2xl text-xs font-bold flex items-center gap-2 hover:bg-slate-800"
               >
-                <span>📋</span> Roteiro do Dia ({roteiroDia.total_paradas} Paradas • {roteiroDia.total_distancia_km || roteiroDia.total_km} km)
+                <span>📋</span> Roteiro do Dia ({roteiroDia.total_paradas} Paradas • {roteiroDia.total_distancia_km} km)
                 <span className="text-emerald-400">▲</span>
               </button>
             ) : (
-              <div className="bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-3xl shadow-2xl p-4 text-white animate-in fade-in max-h-[75vh] flex flex-col">
+              <div className="bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-3xl shadow-2xl p-4 text-white animate-in fade-in max-h-[70vh] flex flex-col">
                 {/* Cabeçalho do Drawer */}
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                   <div className="flex items-center gap-2">
@@ -1059,53 +569,43 @@ function RadarMapaInterativo({
                       <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
                         <span>📋</span> Roteiro do Dia
                       </h4>
-                      <p className="text-[10px] text-slate-400">
-                        {roteiroDia.total_paradas} Paradas • {roteiroDia.total_distancia_km || roteiroDia.total_km} km • ~{roteiroDia.total_tempo_transito_min || roteiroDia.total_tempo_transito || 0} min trânsito
+                      <p className="text-[10px] text-slate-400 font-mono">
+                        {roteiroDia.total_paradas} medições programadas
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setDrawerRoteiroAberto(false)}
-                    className="p-1 text-slate-400 hover:text-white rounded-lg text-xs"
-                    title="Recolher painel"
-                  >
-                    ▼
-                  </button>
-                </div>
 
-                {/* Métricas do Roteiro */}
-                <div className="grid grid-cols-3 gap-2 my-3">
-                  <div className="bg-slate-950 p-2 rounded-xl border border-slate-800 text-center">
-                    <span className="text-[9px] text-slate-500 uppercase font-black block">Ganhos</span>
-                    <span className="text-xs font-black text-emerald-400 font-mono">
-                      {formatarMoeda(roteiroDia.total_repasse_garantido || roteiroDia.total_repasse || 0)}
-                    </span>
-                  </div>
-                  <div className="bg-slate-950 p-2 rounded-xl border border-slate-800 text-center">
-                    <span className="text-[9px] text-slate-500 uppercase font-black block">Medição</span>
-                    <span className="text-xs font-bold text-blue-400">
-                      {roteiroDia.total_tempo_medicoes_min || roteiroDia.total_tempo_medicoes || 0} min
-                    </span>
-                  </div>
-                  <div className="bg-slate-950 p-2 rounded-xl border border-slate-800 text-center">
-                    <span className="text-[9px] text-slate-500 uppercase font-black block">Trânsito</span>
-                    <span className="text-xs font-bold text-amber-400 font-mono">
-                      {roteiroDia.total_distancia_km || roteiroDia.total_km} km
-                    </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setDrawerRoteiroAberto(false)}
+                      className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 text-xs font-bold"
+                      title="Minimizar Roteiro"
+                    >
+                      ▼
+                    </button>
                   </div>
                 </div>
 
-                {/* Status da Sugestão com Botão de Aceite */}
-                <div className="bg-blue-950/40 border border-blue-900/50 p-2 rounded-xl mb-2 flex items-center justify-between text-xs">
-                  <span className="text-blue-300 font-medium text-[11px] flex items-center gap-1">
-                    <span>✨</span> Sugestão de Rota Otimizada
-                  </span>
-                  <button
-                    onClick={handleAceitarSugestaoRota}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black px-2.5 py-1 rounded-lg transition-transform hover:scale-105"
-                  >
-                    ✅ Aceitar Rota
-                  </button>
+                {/* Métricas do Roteiro (Total KM, Trânsito, Medição, Ganho) */}
+                <div className="grid grid-cols-4 gap-1.5 bg-slate-950/80 p-2.5 rounded-2xl border border-slate-800/80 my-3">
+                  <div className="text-center">
+                    <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Total</span>
+                    <span className="text-xs font-mono font-black text-sky-400">{roteiroDia.total_distancia_km} km</span>
+                  </div>
+                  <div className="text-center border-l border-slate-800">
+                    <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Trânsito</span>
+                    <span className="text-xs font-mono font-black text-amber-400">{roteiroDia.duracao_transito_min}m</span>
+                  </div>
+                  <div className="text-center border-l border-slate-800">
+                    <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Medições</span>
+                    <span className="text-xs font-mono font-black text-purple-400">{roteiroDia.duracao_medicao_min}m</span>
+                  </div>
+                  <div className="text-center border-l border-slate-800">
+                    <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Ganho</span>
+                    <span className="text-xs font-mono font-black text-emerald-400 truncate block">
+                      {formatarMoeda(roteiroDia.ganho_total_repasse)}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Abas: Paradas vs Trechos */}
@@ -1124,85 +624,59 @@ function RadarMapaInterativo({
                   </button>
                 </div>
 
-                {/* Lista de Paradas Clicáveis ou Trechos */}
-                <div className="space-y-2 overflow-y-auto custom-scrollbar flex-1 pr-1 max-h-56">
+                {/* Lista de Paradas ou Trechos */}
+                <div className="space-y-2 overflow-y-auto custom-scrollbar flex-1 pr-1 max-h-52">
                   {abaRoteiro === 'paradas' ? (
-                    roteiroDia.paradas.map((parada, idx) => {
-                      const trechoCorrespondente = roteiroDia.trechos && roteiroDia.trechos[idx];
-                      const osId = parada.os_id || parada.id;
-                      return (
-                        <div
-                          key={osId}
-                          className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 flex items-center justify-between gap-2 hover:border-blue-500/60 transition-colors"
-                        >
-                          <div 
-                            onClick={() => handleClicarParada(parada)}
-                            className="flex items-center gap-2 min-w-0 cursor-pointer flex-1"
-                            title="Clique para ver no mapa e exibir OS"
-                          >
-                            <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-xs font-black flex items-center justify-center flex-shrink-0">
-                              {idx + 1}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-bold text-white truncate hover:text-blue-400 transition-colors">
-                                {parada.cliente_nome}
-                              </p>
-                              <p className="text-[10px] text-slate-400 truncate">
-                                {parada.endereco || parada.endereco_obra}
-                              </p>
-                              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/60 px-1.5 py-0.5 rounded">
-                                  💰 {formatarMoeda(parada.custo_medidor || 0)}
-                                </span>
-                                <span className="text-[10px] font-mono text-blue-400 bg-blue-950/60 px-1.5 py-0.5 rounded">
-                                  ⏱️ {parada.tempo_estimado_min || 60}m
-                                </span>
-                                {trechoCorrespondente && (
-                                  <span className="text-[9px] font-mono text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded">
-                                    🚗 {trechoCorrespondente.duracao_minutos || trechoCorrespondente.duracao_min || 15}m ({trechoCorrespondente.distancia_km || 0}km)
-                                  </span>
-                                )}
-                              </div>
+                    roteiroDia.paradas.map((parada, idx) => (
+                      <div key={parada.id} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 flex items-center justify-between gap-2 hover:border-slate-700 transition-colors">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-xs font-black flex items-center justify-center flex-shrink-0">
+                            {idx + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">{parada.cliente_nome}</p>
+                            <p className="text-[10px] text-slate-400 truncate">{parada.endereco_obra}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[9px] font-mono text-amber-400 font-bold">
+                                ⏰ {parada.hora_agendada || '--:--'}
+                              </span>
+                              <span className="text-[9px] font-mono text-slate-500">
+                                (~{parada.tempo_estimado_min || 60} min)
+                              </span>
+                              <span className="text-[9px] font-mono text-emerald-400 font-bold">
+                                {formatarMoeda(parada.custo_medidor)}
+                              </span>
                             </div>
-                          </div>
-
-                          {/* Ações da Parada: Subir / Descer e Remover */}
-                          <div className="flex flex-col gap-1 flex-shrink-0 items-center">
-                            <div className="flex gap-1">
-                              <button
-                                disabled={idx === 0}
-                                onClick={(e) => { e.stopPropagation(); handleMoverParada(idx, -1); }}
-                                className={`px-1.5 py-0.5 rounded text-[10px] ${idx === 0 ? 'opacity-20 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
-                                title="Mover para cima"
-                              >
-                                ▲
-                              </button>
-                              <button
-                                disabled={idx === roteiroDia.paradas.length - 1}
-                                onClick={(e) => { e.stopPropagation(); handleMoverParada(idx, 1); }}
-                                className={`px-1.5 py-0.5 rounded text-[10px] ${idx === roteiroDia.paradas.length - 1 ? 'opacity-20 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
-                                title="Mover para baixo"
-                              >
-                                ▼
-                              </button>
-                            </div>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleRemoverParada(osId); }}
-                              className="text-[10px] text-red-400 hover:text-red-300 p-0.5"
-                              title="Remover do roteiro"
-                            >
-                              🗑️
-                            </button>
                           </div>
                         </div>
-                      );
-                    })
+
+                        {/* Botões de Reordenamento (Subir / Descer) */}
+                        <div className="flex flex-col gap-1 flex-shrink-0">
+                          <button
+                            disabled={idx === 0}
+                            onClick={() => handleMoverParada(idx, -1)}
+                            className={`px-1.5 py-0.5 rounded text-[10px] ${idx === 0 ? 'opacity-20 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
+                            title="Mover para cima"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            disabled={idx === roteiroDia.paradas.length - 1}
+                            onClick={() => handleMoverParada(idx, 1)}
+                            className={`px-1.5 py-0.5 rounded text-[10px] ${idx === roteiroDia.paradas.length - 1 ? 'opacity-20 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
+                            title="Mover para baixo"
+                          >
+                            ▼
+                          </button>
+                        </div>
+                      </div>
+                    ))
                   ) : (
                     roteiroDia.trechos?.map((trecho, idx) => (
                       <div key={idx} className="bg-slate-950 p-2 rounded-xl border border-slate-800 text-[11px]">
                         <div className="flex justify-between items-center text-blue-400 font-bold">
-                          <span>🛣️ Trecho {trecho.indice || idx + 1}</span>
-                          <span className="text-white font-mono">{trecho.distancia_km} km • {trecho.duracao_minutos || trecho.duracao_min} min</span>
+                          <span>🛣️ Trecho {trecho.numero}</span>
+                          <span className="text-white font-mono">{trecho.distancia_km} km • {trecho.duracao_min} min</span>
                         </div>
                         <p className="text-slate-400 text-[10px] truncate mt-0.5">
                           {trecho.origem_nome} ➔ {trecho.destino_nome}
@@ -1222,11 +696,11 @@ function RadarMapaInterativo({
                     disabled={carregandoRoteiro}
                     className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-amber-500/20"
                   >
-                    <span>⚡</span> Otimizar Sequência por Proximidade
+                    <span>⚡</span> Otimizar por Proximidade
                   </button>
 
                   <a
-                    href={roteiroDia.google_maps_multi_stop_url || roteiroDia.google_maps_url}
+                    href={roteiroDia.google_maps_multi_stop_url}
                     target="_blank"
                     rel="noreferrer"
                     className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-600/30 text-center"
@@ -1239,7 +713,7 @@ function RadarMapaInterativo({
           </div>
         )}
 
-        {/* ⚡ Oportunidades por Proximidade no Radar */}
+        {/* ⚡ Lista de Oportunidades por Proximidade (Canto Inferior Esquerdo) */}
         {demandasPendentes.length > 0 && (
           <div className="absolute bottom-4 left-4 right-4 md:right-auto md:w-96 max-h-52 bg-slate-900/95 backdrop-blur border border-slate-800 rounded-2xl p-3.5 shadow-2xl z-10 overflow-hidden flex flex-col">
             <div className="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-800">
@@ -1252,8 +726,8 @@ function RadarMapaInterativo({
             <div className="space-y-2 overflow-y-auto custom-scrollbar pr-1 flex-1">
               {demandasOrdenadasProximidade.slice(0, 4).map(os => (
                 <div key={os.id} className="bg-slate-950 p-2 rounded-xl border border-slate-800/80 flex justify-between items-center hover:border-blue-500/50 transition-colors">
-                  <div className="truncate mr-2 cursor-pointer flex-1" onClick={() => onAbrirDetalhesOS && onAbrirDetalhesOS(os.id)}>
-                    <p className="text-xs font-bold text-white truncate hover:text-blue-400">{os.cliente_nome}</p>
+                  <div className="truncate mr-2">
+                    <p className="text-xs font-bold text-white truncate">{os.cliente_nome}</p>
                     <p className="text-[10px] text-slate-400 truncate">{os.endereco_obra}</p>
                     <p className="text-[10px] font-mono text-blue-400 mt-0.5">
                       🚗 {os.distancia_km} km • {formatarMoeda(os.custo_medidor)}
@@ -1267,14 +741,12 @@ function RadarMapaInterativo({
                     >
                       ➕ Rota
                     </button>
-                    {aceitarDemanda && (
-                      <button
-                        onClick={() => aceitarDemanda(os.id)}
-                        className="bg-amber-500 hover:bg-amber-400 text-slate-950 px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase whitespace-nowrap shadow transition-transform hover:scale-105"
-                      >
-                        Aceitar
-                      </button>
-                    )}
+                    <button
+                      onClick={() => aceitarDemanda(os.id)}
+                      className="bg-amber-500 hover:bg-amber-400 text-slate-900 px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase whitespace-nowrap shadow transition-transform hover:scale-105"
+                    >
+                      Aceitar
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1285,7 +757,6 @@ function RadarMapaInterativo({
     </div>
   );
 }
-
 
 // 🏢 Modal para Loja Rastrear o Medidor em Deslocamento
 function ModalRastreioLoja({ os, onClose, formatarMoeda }) {
@@ -1553,28 +1024,14 @@ function ModalAgendaMedidor({ isOpen, onClose, medidor, onSalvar }) {
   );
 }
 
-
-
-
 export default function PortalUsuario({ perfil, refId, setToken }) {
   const [todasOrdens, setTodasOrdens] = useState([])
   const [loading, setLoading] = useState(true)
   
-  const [abaMedidor, setAbaMedidor] = useState('oportunidades')
-  const [visaoDemanda, setVisaoDemanda] = useState('mapa')
+  const [abaMedidor, setAbaMedidor] = useState('minhas')
+  const [visaoDemanda, setVisaoDemanda] = useState('lista')
   const [osRotaSelecionada, setOsRotaSelecionada] = useState(null)
   
-  // Filtro de busca e ordenação das demandas
-  const [buscaDemanda, setBuscaDemanda] = useState('')
-  const [ordemDemanda, setOrdemDemanda] = useState('proximidade')
-
-  // Modais de OS e Documentos de Medição
-  const [osParaExibir, setOsParaExibir] = useState(null)
-  const [osParaDocumentos, setOsParaDocumentos] = useState(null)
-
-  // Localização do medidor para cálculos de ordenação e mapa
-  const [posicaoMedidor, setPosicaoMedidor] = useState({ lat: -15.779017, lon: -47.997900 })
-
   const mesAtualStr = new Date().toISOString().slice(0, 7)
   const [filtroMesCaixa, setFiltroMesCaixa] = useState(mesAtualStr)
   const [filtroLojaCaixa, setFiltroLojaCaixa] = useState('TODAS')
@@ -1596,13 +1053,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
   const fazerLogout = () => { localStorage.removeItem('sgm_token'); localStorage.removeItem('sgm_usuario'); if (setToken) setToken(null); window.location.href = '/' }
 
   const carregarOrdens = () => {
-    setLoading(true); 
-    axios.get('/api/os')
-      .then(res => { 
-        setTodasOrdens(res.data || []); 
-        setLoading(false); 
-      })
-      .catch(() => setLoading(false));
+    setLoading(true); axios.get('/api/os').then(res => { setTodasOrdens(res.data || []); setLoading(false) }).catch(() => setLoading(false))
   }
 
   const carregarCadastros = async () => {
@@ -1615,9 +1066,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
       setLojas(perfil === 'LOJA' ? resLojas.data.filter(l => l.id === refId) : resLojas.data)
       setClientes(resClientes.data)
       setMedidores(resMedidores.data)
-    } catch (error) { 
-      console.error("Erro ao carregar cadastros") 
-    }
+    } catch (error) { console.error("Erro ao carregar cadastros") }
   }
 
   useEffect(() => { carregarOrdens(); carregarCadastros() }, [perfil, refId])
@@ -1627,9 +1076,10 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
     if (perfil !== 'MEDIDOR' || !refId || !navigator.geolocation) return;
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        const novaPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-        setPosicaoMedidor(novaPos);
-        axios.put(`/api/medidores/${refId}/localizacao`, novaPos).catch(() => {});
+        axios.put(`/api/medidores/${refId}/localizacao`, {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude
+        }).catch(() => {});
       },
       (err) => console.log('GPS watch:', err.message),
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
@@ -1637,7 +1087,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [perfil, refId]);
 
-  const formatarMoeda = (v) => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const formatarMoeda = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   const formatarData = (d) => { if (!d) return '-'; return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) }
   
   const calcularSLA = (os) => {
@@ -1650,6 +1100,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
     return { dias: diffDias, texto: `${diffDias} dias (Atraso)`, cor: 'text-red-400 bg-red-500/10 font-bold' }
   }
 
+  // 🔥 NOVO CÁLCULO PARA O PDF
   const calcularValorUnitarioAmbiente = (amb, osCompleta) => {
     const valorBase = osCompleta.valor_base_m2 || 1.55; 
     return (amb.area_estimada_m2 * valorBase * amb.complexidade);
@@ -1657,7 +1108,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
 
   const gerarPDF = (os) => {
     let linhasAmbientes = ''
-    (os.ambientes || []).forEach((amb, i) => {
+    os.ambientes.forEach((amb, i) => {
       const valorUnitario = calcularValorUnitarioAmbiente(amb, os)
       linhasAmbientes += `<tr><td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0;">${i + 1}</td><td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold;">${amb.nome}</td><td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0;">${amb.area_estimada_m2} m²</td><td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold;">${formatarMoeda(valorUnitario)}</td></tr>`
     })
@@ -1703,8 +1154,9 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
     
     try {
       const idLimpo = novoMedidorId ? parseInt(novoMedidorId) : null;
+      // Mantém como PENDENTE_LOJA para o medidor confirmar após o agendamento do cliente
       await axios.put(`/api/os/${os.id}/status`, { medidor_id: idLimpo, status: 'PENDENTE_LOJA' });
-      alert(idLimpo ? "✅ Medição direcionada ao Medidor! Ele confirmará a medição após o agendamento do cliente." : "✅ Rota libertada para o Radar de Demandas!");
+      alert(idLimpo ? "✅ Medição direcionada ao Medidor! Ele confirmará a medição após o cliente agendar a data." : "✅ Rota libertada para o Radar de Demandas!");
       carregarOrdens();
     } catch (e) {
       alert("❌ Erro ao transferir a rota.");
@@ -1734,16 +1186,6 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
     }
   }
 
-  const handleAdicionarAoRoteiro = async (osId) => {
-    try {
-      await axios.post(`/api/rotas/adicionar/${osId}`);
-      alert("✅ Demanda adicionada ao seu Roteiro Diário de Medições!");
-      carregarOrdens();
-    } catch (err) {
-      alert("❌ Erro ao adicionar à rota: " + (err.response?.data?.erro || err.message));
-    }
-  };
-
   const salvarAgendaMedidor = async (dias, horas) => {
     try {
       await axios.put(`/api/medidores/${refId}/disponibilidade`, {
@@ -1757,34 +1199,17 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
     }
   }
 
-  const marcarChegada = async (osId) => { 
-    try { 
-      await axios.put(`/api/os/${osId}/cheguei`); 
-      alert("📍 Check-in realizado! Loja notificada."); 
-      carregarOrdens() 
-    } catch (error) { 
-      alert("⚠️ Erro ao registrar chegada."); 
-    } 
-  }
-
+  const marcarChegada = async (osId) => { try { await axios.put(`/api/os/${osId}/cheguei`); alert("📍 Check-in realizado! Loja notificada."); carregarOrdens() } catch (error) { alert("⚠️ Erro ao registrar chegada."); } }
   const entregarMedicao = async (osId, arquivoURL, mat, obs) => { 
     try { 
       const materialExtra = mat ? `Material: ${mat}` : '';
       const observacaoExtra = obs ? ` | Obs: ${obs}` : '';
       await axios.put(`/api/os/${osId}/entregar`, { caminho_medicao: arquivoURL, material_medicao: materialExtra + observacaoExtra }); 
-      alert("🎉 Medição entregue com sucesso!"); 
-      setAbaMedidor('concluidas'); 
-      carregarOrdens() 
-    } catch (e) { 
-      alert("Erro de comunicação com o servidor.") 
-    } 
+      alert("🎉 Medição entregue com sucesso!"); setAbaMedidor('historico'); carregarOrdens() 
+    } catch (e) { alert("Erro de comunicação com o servidor.") } 
   }
 
-  let listaLoja = []; 
-  let medidorEmRota = []; 
-  let medidorPendentes = []; 
-  let medidorHistorico = [];
-  let medidorConcluidas = [];
+  let listaLoja = []; let medidorEmRota = []; let medidorPendentes = []; let medidorHistorico = []
   
   if (perfil === 'LOJA') {
     const passaMes = o => filtroMes === 'TODOS' || o.criado_em.substring(0,7) === filtroMes
@@ -1792,8 +1217,8 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
     listaLoja = todasOrdens.filter(o => passaMes(o) && passaSec(o))
   } else {
     medidorEmRota = todasOrdens.filter(os => os.medidor_id === refId && (os.status === 'EM_ROTA' || os.status === 'NO_LOCAL'))
+    // Demandas abertas no mercado OU direcionadas especificamente para este medidor aguardando confirmação
     medidorPendentes = todasOrdens.filter(os => os.status === 'PENDENTE_LOJA' && (!os.medidor_id || os.medidor_id === refId))
-    medidorConcluidas = todasOrdens.filter(os => os.medidor_id === refId && os.status === 'CONCLUIDO')
     
     let historicoBruto = todasOrdens.filter(os => os.medidor_id === refId && os.status === 'CONCLUIDO')
     medidorHistorico = historicoBruto.filter(os => {
@@ -1801,32 +1226,6 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
       return (filtroMesCaixa === 'TODOS' || mesAno === filtroMesCaixa) && (filtroLojaCaixa === 'TODAS' || os.loja_id.toString() === filtroLojaCaixa);
     })
   }
-
-  // Filtragem e ordenação inteligente das demandas pendentes
-  const demandasFiltradas = medidorPendentes
-    .filter(os => {
-      if (!buscaDemanda.trim()) return true;
-      const termo = buscaDemanda.toLowerCase();
-      const cliente = (os.cliente_nome || '').toLowerCase();
-      const endereco = (os.endereco_obra || '').toLowerCase();
-      const lojaNome = (os.loja?.nome_fantasia || '').toLowerCase();
-      return cliente.includes(termo) || endereco.includes(termo) || lojaNome.includes(termo);
-    })
-    .map(os => {
-      const lat = Number(os.latitude_obra) || -15.775440;
-      const lon = Number(os.longitude_obra) || -47.779763;
-      const dist = calcularDistanciaKm(posicaoMedidor.lat, posicaoMedidor.lon, lat, lon);
-      return { ...os, distancia_km: dist };
-    })
-    .sort((a, b) => {
-      if (ordemDemanda === 'valor') {
-        return (b.custo_medidor || 0) - (a.custo_medidor || 0);
-      }
-      if (ordemDemanda === 'data') {
-        return (a.data_agendada || '9999').localeCompare(b.data_agendada || '9999');
-      }
-      return (a.distancia_km || 0) - (b.distancia_km || 0);
-    });
 
   const ganhosTotaisMedidor = medidorHistorico.reduce((acc, os) => acc + os.custo_medidor, 0)
   const mesesDisponiveis = [...new Set(todasOrdens.map(o => o.criado_em.substring(0,7)))].sort().reverse()
@@ -1859,347 +1258,75 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
       {perfil === 'MEDIDOR' && (
         <>
           <div className="flex flex-wrap gap-3 mb-6 border-b border-slate-800 pb-4">
-            <button 
-              onClick={() => setAbaMedidor('oportunidades')} 
-              className={`flex-1 sm:flex-none px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center justify-center gap-2 min-w-[140px] ${abaMedidor === 'oportunidades' ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-900/20 font-black' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800'}`}
-            >
-              🚨 Demandas <span className="bg-amber-900/50 text-amber-500 px-2 py-0.5 rounded-md text-[10px]">{medidorPendentes.length}</span>
-            </button>
-
-            <button 
-              onClick={() => setAbaMedidor('minhas')} 
-              className={`flex-1 sm:flex-none px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center justify-center gap-2 min-w-[140px] ${abaMedidor === 'minhas' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800'}`}
-            >
+            <button onClick={() => setAbaMedidor('minhas')} className={`flex-1 sm:flex-none px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center justify-center gap-2 min-w-[140px] ${abaMedidor === 'minhas' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800'}`}>
               🛵 Minha Rota <span className="bg-blue-800 px-2 py-0.5 rounded-md text-[10px]">{medidorEmRota.length}</span>
             </button>
-
-            <button 
-              onClick={() => setAbaMedidor('concluidas')} 
-              className={`flex-1 sm:flex-none px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center justify-center gap-2 min-w-[140px] ${abaMedidor === 'concluidas' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/20 font-bold' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800'}`}
-            >
-              📁 Medições Concluídas <span className="bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded-md text-[10px]">{medidorConcluidas.length}</span>
+            <button onClick={() => setAbaMedidor('oportunidades')} className={`flex-1 sm:flex-none px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center justify-center gap-2 min-w-[140px] ${abaMedidor === 'oportunidades' ? 'bg-amber-500 text-slate-900 shadow-lg shadow-amber-900/20' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800'}`}>
+              🚨 Demandas <span className="bg-amber-900/50 text-amber-500 px-2 py-0.5 rounded-md text-[10px]">{medidorPendentes.length}</span>
             </button>
-
-            <button 
-              onClick={() => setAbaMedidor('historico')} 
-              className={`flex-1 sm:flex-none px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center justify-center gap-2 min-w-[140px] ${abaMedidor === 'historico' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800'}`}
-            >
+            <button onClick={() => setAbaMedidor('historico')} className={`flex-1 sm:flex-none px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center justify-center gap-2 min-w-[140px] ${abaMedidor === 'historico' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800'}`}>
               💰 Meu Caixa
             </button>
-
-            <button 
-              onClick={() => setIsAgendaOpen(true)} 
-              className="flex-1 sm:flex-none px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center justify-center gap-2 min-w-[140px] bg-slate-900 border border-slate-800 text-slate-300 hover:border-amber-500/50 hover:text-white shadow-sm"
-            >
+            <button onClick={() => setIsAgendaOpen(true)} className="flex-1 sm:flex-none px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center justify-center gap-2 min-w-[140px] bg-slate-900 border border-slate-800 text-slate-300 hover:border-amber-500/50 hover:text-white shadow-sm">
               📅 Minha Agenda
             </button>
           </div>
 
-          {/* ABA: DEMANDAS (Com Radar de Medição por Padrão) */}
           {abaMedidor === 'oportunidades' && (
             <div>
-              <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-                <div className="flex items-center gap-2 flex-1 max-w-xl">
-                  <input
-                    type="text"
-                    value={buscaDemanda}
-                    onChange={e => setBuscaDemanda(e.target.value)}
-                    placeholder="🔍 Buscar por cliente, endereço ou loja..."
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder:text-slate-500 outline-none focus:border-blue-500"
-                  />
-                  <select
-                    value={ordemDemanda}
-                    onChange={e => setOrdemDemanda(e.target.value)}
-                    className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-300 outline-none focus:border-blue-500 cursor-pointer whitespace-nowrap"
-                  >
-                    <option value="proximidade">📍 Mais Próximos</option>
-                    <option value="valor">💰 Maior Ganho</option>
-                    <option value="data">📅 Data Agendada</option>
-                  </select>
-                </div>
-
-                <div className="flex gap-2">
-                  <button 
-                    onClick={()=>setVisaoDemanda('mapa')} 
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${visaoDemanda === 'mapa' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800'}`}
-                  >
-                    🗺️ Radar de Medição
-                  </button>
-                  <button 
-                    onClick={()=>setVisaoDemanda('lista')} 
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${visaoDemanda === 'lista' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800'}`}
-                  >
-                    📑 Lista ({demandasFiltradas.length})
-                  </button>
-                </div>
+              <div className="flex justify-end gap-2 mb-4">
+                <button onClick={()=>setVisaoDemanda('lista')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${visaoDemanda === 'lista' ? 'bg-slate-800 text-white' : 'bg-slate-900 border border-slate-800 text-slate-500'}`}>📑 Lista</button>
+                <button onClick={()=>setVisaoDemanda('mapa')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${visaoDemanda === 'mapa' ? 'bg-slate-800 text-white' : 'bg-slate-900 border border-slate-800 text-slate-500'}`}>🗺️ Radar de Mapa</button>
               </div>
 
-              {visaoDemanda === 'mapa' ? (
+              {visaoDemanda === 'lista' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {medidorPendentes.map(os => (
+                    <CardDemandaMedidor 
+                      key={os.id} 
+                      os={os} 
+                      formatarMoeda={formatarMoeda} 
+                      aceitarDemanda={aceitarDemanda}
+                      recusarDemanda={recusarDemanda}
+                      refId={refId}
+                      posicaoMedidor={{ lat: -15.779017, lon: -47.997900 }}
+                      onVerNoMapa={(osAlvo) => {
+                        setOsRotaSelecionada(osAlvo);
+                        setVisaoDemanda('mapa');
+                      }}
+                    />
+                  ))}
+                  {medidorPendentes.length === 0 && <div className="col-span-full py-12 text-center text-slate-500 font-medium">Nenhuma demanda com documentos completos no momento.</div>}
+                </div>
+              ) : (
                 <RadarMapaInterativo
                   medidor={medidores.find(m => m.id === refId)}
                   lojas={lojas}
-                  demandasPendentes={demandasFiltradas}
+                  demandasPendentes={medidorPendentes}
                   ordensEmRota={medidorEmRota}
                   osSelecionada={osRotaSelecionada}
                   aceitarDemanda={aceitarDemanda}
-                  recusarDemanda={recusarDemanda}
                   formatarMoeda={formatarMoeda}
                   onAtualizarDados={carregarOrdens}
-                  onAbrirDetalhesOS={(osId) => {
-                    const alvo = todasOrdens.find(o => o.id === osId);
-                    if (alvo) setOsParaExibir(alvo);
-                  }}
                   onAtualizarLocalizacao={(lat, lon) => {
                     if (refId) {
                       axios.put(`/api/medidores/${refId}/localizacao`, { latitude: lat, longitude: lon }).catch(() => {});
                     }
                   }}
                 />
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                  {demandasFiltradas.map(os => (
-                    <div key={os.id} className="relative flex flex-col">
-                      <CardDemandaMedidor 
-                        os={os} 
-                        formatarMoeda={formatarMoeda} 
-                        aceitarDemanda={aceitarDemanda}
-                        recusarDemanda={recusarDemanda}
-                        refId={refId}
-                        posicaoMedidor={posicaoMedidor}
-                        onVerNoMapa={(osAlvo) => {
-                          setOsRotaSelecionada(osAlvo);
-                          setVisaoDemanda('mapa');
-                        }}
-                      />
-                      <div className="mt-2 flex gap-2">
-                        <button
-                          onClick={() => setOsParaExibir(os)}
-                          className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1 transition-colors border border-slate-700"
-                        >
-                          <span>👁️</span> Exibir OS Completa
-                        </button>
-                        <button
-                          onClick={() => handleAdicionarAoRoteiro(os.id)}
-                          className="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 font-bold px-3 py-2 rounded-xl text-xs flex items-center justify-center gap-1 transition-colors"
-                          title="Adicionar ao Roteiro de Hoje"
-                        >
-                          <span>➕</span> Rota
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  {demandasFiltradas.length === 0 && (
-                    <div className="col-span-full py-16 text-center bg-slate-900/50 rounded-3xl border border-dashed border-slate-800">
-                      <p className="text-slate-500 font-medium">Nenhuma demanda encontrada com os critérios informados.</p>
-                    </div>
-                  )}
-                </div>
               )}
             </div>
           )}
 
-          {/* ABA: MINHA ROTA */}
           {abaMedidor === 'minhas' && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center bg-slate-900/60 p-3.5 rounded-2xl border border-slate-800">
-                <p className="text-xs text-slate-400">
-                  Total de <strong>{medidorEmRota.length}</strong> medições em andamento hoje.
-                </p>
-                <button
-                  onClick={() => { setAbaMedidor('oportunidades'); setVisaoDemanda('mapa'); }}
-                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow"
-                >
-                  <span>🗺️</span> Ver no Radar de Medição
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                {medidorEmRota.map(os => (
-                  <div key={os.id} className="flex flex-col">
-                    <CardRotaMedidor 
-                      os={os} 
-                      formatarMoeda={formatarMoeda} 
-                      marcarChegada={marcarChegada} 
-                      entregarMedicao={entregarMedicao} 
-                    />
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        onClick={() => setOsParaExibir(os)}
-                        className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1 transition-colors border border-slate-700"
-                      >
-                        <span>👁️</span> Exibir OS Completa
-                      </button>
-                      <button
-                        onClick={() => gerarPDF(os)}
-                        className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-3 py-2 rounded-xl text-xs flex items-center justify-center gap-1 transition-colors border border-slate-700"
-                        title="Gerar PDF da OS"
-                      >
-                        <span>📄</span> PDF
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {medidorEmRota.length === 0 && (
-                  <div className="col-span-full py-16 text-center text-slate-500 font-medium bg-slate-900/50 rounded-3xl border border-dashed border-slate-800">
-                    A sua rota está livre. Apanhe novas demandas no Radar de Medição!
-                  </div>
-                )}
-              </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {medidorEmRota.map(os => (
+                <CardRotaMedidor key={os.id} os={os} formatarMoeda={formatarMoeda} marcarChegada={marcarChegada} entregarMedicao={entregarMedicao} />
+              ))}
+              {medidorEmRota.length === 0 && <div className="col-span-full py-12 text-center text-slate-500 font-medium">A sua rota está livre. Apanhe novas demandas!</div>}
             </div>
           )}
 
-          {/* ABA: MEDIÇÕES CONCLUÍDAS (Histórico de Documentos, Fotos, Promob, Croqui) */}
-          {abaMedidor === 'concluidas' && (
-            <div className="animate-fade-in space-y-6">
-              <div className="flex flex-wrap justify-between items-center gap-4 bg-slate-900/60 border border-slate-800 p-4 rounded-2xl">
-                <div>
-                  <h2 className="text-lg font-black text-white flex items-center gap-2">
-                    <span>📁</span> Histórico de Medições Concluídas & Documentos Técnicos
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Consulte os relatórios, fotos, croquis e arquivos Promob enviados à loja. Você pode fazer edições e acrescentar novos arquivos a qualquer momento.
-                  </p>
-                </div>
-                <div className="bg-emerald-950/60 border border-emerald-800/60 px-4 py-2 rounded-xl">
-                  <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider block">Total Entregues</span>
-                  <span className="text-xl font-black text-white">{medidorConcluidas.length} OSs</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {medidorConcluidas.map(os => {
-                  let fotosCount = 0;
-                  try {
-                    const arr = JSON.parse(os.fotos_medicao || '[]');
-                    if (Array.isArray(arr)) fotosCount = arr.length;
-                  } catch(e) {}
-
-                  return (
-                    <div key={os.id} className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl flex flex-col hover:border-slate-700 transition-all">
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
-                          <span>✅</span> Concluído & Enviado à Loja
-                        </span>
-                        <span className="text-slate-500 font-mono text-xs">#00{os.id}</span>
-                      </div>
-
-                      <h3 className="text-lg font-black text-white truncate">{os.cliente_nome}</h3>
-                      <p className="text-xs text-slate-400 truncate mt-0.5">📍 {os.endereco_obra}</p>
-                      {os.loja && (
-                        <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
-                          <span>🏢</span> {os.loja.nome_fantasia}
-                        </p>
-                      )}
-
-                      {/* Resumo de Documentos Anexos */}
-                      <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800/80 my-4 space-y-2 text-xs flex-1">
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Documentos da Medição</p>
-                        
-                        <div className="flex items-center justify-between text-slate-300">
-                          <span className="flex items-center gap-1.5">
-                            <span>📄</span> Relatório PDF:
-                          </span>
-                          {os.caminho_medicao ? (
-                            <a href={os.caminho_medicao} target="_blank" rel="noreferrer" className="text-emerald-400 font-bold hover:underline">
-                              Visualizar ↗
-                            </a>
-                          ) : (
-                            <span className="text-slate-600">Não anexado</span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center justify-between text-slate-300">
-                          <span className="flex items-center gap-1.5">
-                            <span>📷</span> Fotos da Obra:
-                          </span>
-                          <span className={fotosCount > 0 ? "text-blue-400 font-bold font-mono" : "text-slate-600"}>
-                            {fotosCount > 0 ? `${fotosCount} foto(s)` : 'Sem fotos'}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center justify-between text-slate-300">
-                          <span className="flex items-center gap-1.5">
-                            <span>📐</span> Foto do Croqui/Desenho:
-                          </span>
-                          {os.desenho_croqui ? (
-                            <a href={os.desenho_croqui} target="_blank" rel="noreferrer" className="text-teal-400 font-bold hover:underline">
-                              Ver Croqui ↗
-                            </a>
-                          ) : (
-                            <span className="text-slate-600">Pendente</span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center justify-between text-slate-300">
-                          <span className="flex items-center gap-1.5">
-                            <span>💻</span> Arquivo Promob/CAD:
-                          </span>
-                          {os.arquivo_promob ? (
-                            <a href={os.arquivo_promob} target="_blank" rel="noreferrer" className="text-sky-400 font-bold hover:underline">
-                              Baixar ↗
-                            </a>
-                          ) : (
-                            <span className="text-slate-600">Pendente</span>
-                          )}
-                        </div>
-
-                        {os.material_medicao && (
-                          <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400 truncate">
-                            <strong>Obs/Material:</strong> {os.material_medicao}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Ganho e Ações */}
-                      <div className="flex justify-between items-center mb-3 px-1">
-                        <span className="text-xs text-slate-500 font-medium">Repasse da OS:</span>
-                        <span className="text-base font-black text-emerald-400 font-mono">
-                          {formatarMoeda(os.custo_medidor || 0)}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <button
-                          onClick={() => setOsParaDocumentos(os)}
-                          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl text-xs font-black transition-all shadow-md flex items-center justify-center gap-1.5"
-                        >
-                          <span>✏️</span> Editar / Acrescentar Documentos
-                        </button>
-                        
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => setOsParaExibir(os)}
-                            className="bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1"
-                          >
-                            <span>👁️</span> Exibir OS
-                          </button>
-                          <button
-                            onClick={() => gerarPDF(os)}
-                            className="bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1"
-                          >
-                            <span>📄</span> PDF da OS
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {medidorConcluidas.length === 0 && (
-                  <div className="col-span-full py-16 text-center bg-slate-900/50 rounded-3xl border border-dashed border-slate-800">
-                    <p className="text-slate-500 font-medium text-sm">
-                      Você ainda não possui medições concluídas.
-                    </p>
-                    <p className="text-slate-600 text-xs mt-1">
-                      Assim que concluir e entregar uma medição, ela ficará listada aqui com todo o histórico de documentos e arquivos anexos.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ABA: MEU CAIXA */}
           {abaMedidor === 'historico' && (
             <div className="animate-slide-in-right">
               <div className="mb-6 grid grid-cols-2 gap-4">
@@ -2276,6 +1403,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
                     </div>
                     <p className="text-2xl font-black text-white font-mono">{formatarMoeda(os.valor_total_os)}</p>
                     
+                    {/* Alertas de Qualidade da OS */}
                     <div className="mt-3 pt-3 border-t border-slate-800 flex flex-col gap-2 items-start">
                       {!os.termos_aceitos ? (
                         <span className="bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[10px] px-2 py-1 rounded-lg font-bold flex items-center gap-1">
@@ -2293,6 +1421,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
                     </div>
                   </div>
 
+                  {/* 🔥 NOVO: ÁREA DE ATRIBUIÇÃO E TRANSFERÊNCIA DE ROTAS 🔥 */}
                   {os.status !== 'CONCLUIDO' && prontaParaAtribuir && (
                     <div className="mb-4 bg-slate-950/50 p-3 rounded-xl border border-slate-800/80">
                       <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest mb-2 flex items-center gap-1">
@@ -2313,6 +1442,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
                     </div>
                   )}
 
+                  {/* Botões de Ação */}
                   <div className="flex flex-col gap-2 mt-auto">
                     {os.token && (
                       <>
@@ -2383,7 +1513,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
         </>
       )}
 
-      {/* MODAL BLINDADO NOVA OS */}
+      {/* MODAL BLINDADO */}
       <NovaOsModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
@@ -2419,29 +1549,6 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
           onClose={() => setIsAgendaOpen(false)}
           medidor={medidores.find(m => m.id === refId)}
           onSalvar={salvarAgendaMedidor}
-        />
-      )}
-
-      {/* 📋 MODAL DE DETALHES COMPLETOS DA OS */}
-      {osParaExibir && (
-        <ModalDetalhesOS
-          os={osParaExibir}
-          onClose={() => setOsParaExibir(null)}
-          formatarMoeda={formatarMoeda}
-          onAceitar={aceitarDemanda}
-          onRecusar={recusarDemanda}
-          onAdicionarRota={handleAdicionarAoRoteiro}
-          onMarcarChegada={marcarChegada}
-          onEntregar={entregarMedicao}
-        />
-      )}
-
-      {/* 📁 MODAL DE EDIÇÃO E UPLOAD DE DOCUMENTOS DA MEDIÇÃO CONCLUÍDA */}
-      {osParaDocumentos && (
-        <ModalDocumentosMedicao
-          os={osParaDocumentos}
-          onClose={() => setOsParaDocumentos(null)}
-          onSalvarSucesso={() => carregarOrdens()}
         />
       )}
     </div>

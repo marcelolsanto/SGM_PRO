@@ -37,7 +37,12 @@ func ListarOrdens(c *fiber.Ctx) error {
 		Preload("Briefing")
 
 	if mes != "" && mes != "TODOS" {
-		query = query.Where("TO_CHAR(criado_em, 'YYYY-MM') = ?", mes)
+		if tInicio, err := time.Parse("2006-01", mes); err == nil {
+			tFim := tInicio.AddDate(0, 1, 0)
+			query = query.Where("criado_em >= ? AND criado_em < ?", tInicio, tFim)
+		} else {
+			query = query.Where("TO_CHAR(criado_em, 'YYYY-MM') = ?", mes)
+		}
 	}
 	if statusFiltro != "" && statusFiltro != "TODOS" {
 		query = query.Where("status = ?", statusFiltro)
@@ -47,8 +52,7 @@ func ListarOrdens(c *fiber.Ctx) error {
 		q := query.Where("loja_id = ?", refID).Order("criado_em DESC")
 		if limit > 0 {
 			q = q.Limit(limit)
-		} else if mes == "" {
-			// Se não especificou mês, limita aos 250 mais recentes para alta performance
+		} else {
 			q = q.Limit(250)
 		}
 		q.Find(&ordens)
@@ -58,8 +62,7 @@ func ListarOrdens(c *fiber.Ctx) error {
 			Order("criado_em DESC")
 		if limit > 0 {
 			q = q.Limit(limit)
-		} else if mes == "" {
-			// Retorna até 250 ordens mais recentes
+		} else {
 			q = q.Limit(250)
 		}
 		q.Find(&ordens)
@@ -478,26 +481,29 @@ func AtualizarDocumentosMedicao(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"erro": "Dados inválidos"})
 	}
 
+	updates := map[string]interface{}{}
 	if payload.CaminhoMedicao != "" {
-		os.CaminhoMedicao = payload.CaminhoMedicao
+		updates["caminho_medicao"] = payload.CaminhoMedicao
 	}
 	if payload.MaterialMedicao != "" {
-		os.MaterialMedicao = payload.MaterialMedicao
+		updates["material_medicao"] = payload.MaterialMedicao
 	}
 	if payload.FotosMedicao != "" {
-		os.FotosMedicao = payload.FotosMedicao
+		updates["fotos_medicao"] = payload.FotosMedicao
 	}
 	if payload.ArquivoPromob != "" {
-		os.ArquivoPromob = payload.ArquivoPromob
+		updates["arquivo_promob"] = payload.ArquivoPromob
 	}
 	if payload.DesenhoCroqui != "" {
-		os.DesenhoCroqui = payload.DesenhoCroqui
+		updates["desenho_croqui"] = payload.DesenhoCroqui
 	}
 	if payload.DocumentosExtras != "" {
-		os.DocumentosExtras = payload.DocumentosExtras
+		updates["documentos_extras"] = payload.DocumentosExtras
 	}
 
-	config.DB.Save(&os)
+	if len(updates) > 0 {
+		config.DB.Model(&os).Updates(updates)
+	}
 	return c.Status(200).JSON(fiber.Map{
 		"mensagem": "Documentos de medição atualizados com sucesso!",
 		"os":       os,
