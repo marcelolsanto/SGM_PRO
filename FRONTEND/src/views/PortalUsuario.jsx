@@ -29,19 +29,22 @@ function RadarMapaInterativo({
   ordensEmRota = [],
   aceitarDemanda,
   formatarMoeda,
-  onAtualizarLocalizacao
+  onAtualizarLocalizacao,
+  osSelecionada
 }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersGroupRef = useRef(null);
   const routeLineRef = useRef(null);
+  const routeGlowRef = useRef(null);
   const tileLayerRef = useRef(null);
 
   const [tipoMapa, setTipoMapa] = useState('google_streets');
 
+  // Coordenadas padrão em Brasília - DF (Marco Zero / Esplanada)
   const [posicaoMedidor, setPosicaoMedidor] = useState({
-    lat: medidor?.latitude && Number(medidor.latitude) !== 0 ? Number(medidor.latitude) : -23.550520,
-    lon: medidor?.longitude && Number(medidor.longitude) !== 0 ? Number(medidor.longitude) : -46.633308
+    lat: medidor?.latitude && Number(medidor.latitude) !== 0 ? Number(medidor.latitude) : -15.779017,
+    lon: medidor?.longitude && Number(medidor.longitude) !== 0 ? Number(medidor.longitude) : -47.997900
   });
 
   const [filtroRaio, setFiltroRaio] = useState(50);
@@ -49,9 +52,28 @@ function RadarMapaInterativo({
   const [mostrarMinhaRota, setMostrarMinhaRota] = useState(true);
   const [mostrarDemandas, setMostrarDemandas] = useState(true);
 
+  // Estado da rota viária ativa (estilo Waze/Google Maps)
+  const [rotaAtiva, setRotaAtiva] = useState(null);
+  const [carregandoRota, setCarregandoRota] = useState(false);
+
   // 1. Rastreamento GPS ao vivo do dispositivo do Medidor
   useEffect(() => {
     if (!navigator.geolocation) return;
+
+    // Leitura imediata com alta precisão
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const novaPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setPosicaoMedidor(novaPos);
+        if (onAtualizarLocalizacao) {
+          onAtualizarLocalizacao(novaPos.lat, novaPos.lon);
+        }
+      },
+      (err) => {
+        console.warn("GPS inicial não obtido, usando base Brasília:", err.message);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
 
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -62,9 +84,9 @@ function RadarMapaInterativo({
         }
       },
       (err) => {
-        console.warn("GPS não acessível, usando posição base:", err.message);
+        console.warn("GPS contínuo:", err.message);
       },
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 }
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
@@ -126,6 +148,134 @@ function RadarMapaInterativo({
     tileLayerRef.current = window.L.tileLayer(url, options).addTo(map);
   }, [tipoMapa]);
 
+  // Desenha a linha viária real com efeito de brilho e ajusta zoom
+  const desenharTrajetoNoMapa = (coordenadas, destLat, destLon) => {
+    const map = mapInstanceRef.current;
+    const L = window.L;
+    if (!map || !L) return;
+
+    if (routeLineRef.current) {
+      map.removeLayer(routeLineRef.current);
+      routeLineRef.current = null;
+    }
+    if (routeGlowRef.current) {
+      map.removeLayer(routeGlowRef.current);
+      routeGlowRef.current = null;
+    }
+
+    if (coordenadas && coordenadas.length > 1) {
+      // Brilho exterior azul claro
+      routeGlowRef.current = L.polyline(coordenadas, {
+        color: '#38bdf8',
+        weight: 8,
+        opacity: 0.45,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(map);
+
+      // Linha sólida viária vibrante
+      routeLineRef.current = L.polyline(coordenadas, {
+        color: '#2563eb',
+        weight: 5,
+        opacity: 0.95,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(map);
+
+      map.fitBounds([
+        [posicaoMedidor.lat, posicaoMedidor.lon],
+        [destLat, destLon]
+      ], { padding: [70, 70], maxZoom: 15 });
+    }
+  };
+
+  // Traça a rota viária real conectando o Medidor ao Cliente
+  const tracarRotaViaria = async (destLat, destLon, clienteNome, enderecoObra, osId) => {
+    if (!destLat || !destLon) return;
+    setCarregandoRota(true);
+
+    const destEnderecoFormatado = enderecoObra || `${destLat},${destLon}`;
+    const fallbackGmaps = `https://www.google.com/maps/dir/?api=1&origin=${posicaoMedidor.lat},${posicaoMedidor.lon}&destination=${encodeURIComponent(destEnderecoFormatado)}`;
+
+    try {
+      // 1. Tenta buscar via API backend Go
+      const res = await axios.get(`/api/rotas/tracar?origemLat=${posicaoMedidor.lat}&origemLon=${posicaoMedidor.lon}&destLat=${destLat}&destLon=${destLon}`);
+      if (res.data?.coordenadas && res.data.coordenadas.length > 0) {
+        const dados = res.data;
+        setRotaAtiva({
+          os_id: osId,
+          cliente_nome: clienteNome,
+          endereco_obra: enderecoObra,
+          destLat,
+          destLon,
+          distancia_km: dados.distancia_km,
+          duracao_minutos: dados.duracao_minutos,
+          tarifa_estimada: dados.tarifa_estimada,
+          coordenadas: dados.coordenadas,
+          nome_via: dados.nome_via || "Via principal",
+          google_maps_url: dados.google_maps_url || fallbackGmaps
+        });
+        desenharTrajetoNoMapa(dados.coordenadas, destLat, destLon);
+        setCarregandoRota(false);
+        return;
+      }
+    } catch (err) {
+      console.warn("Backend rota offline ou timeout, tentando OSRM direto:", err.message);
+    }
+
+    // 2. Fallback direto OSRM no navegador
+    try {
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${posicaoMedidor.lon},${posicaoMedidor.lat};${destLon},${destLat}?overview=full&geometries=geojson`;
+      const res = await fetch(osrmUrl);
+      const data = await res.json();
+      if (data?.routes && data.routes.length > 0) {
+        const route = data.routes[0];
+        const coordsLeaflet = route.geometry.coordinates.map(p => [p[1], p[0]]);
+        const distKm = Math.round((route.distance / 1000.0) * 10) / 10;
+        const durMin = Math.max(1, Math.round(route.duration / 60.0));
+        const tarifa = Math.round((5.50 + (distKm * 2 * 1.60) + (durMin * 2 * 0.35)) * 100) / 100;
+
+        setRotaAtiva({
+          os_id: osId,
+          cliente_nome: clienteNome,
+          endereco_obra: enderecoObra,
+          destLat,
+          destLon,
+          distancia_km: distKm,
+          duracao_minutos: durMin,
+          tarifa_estimada: tarifa,
+          coordenadas: coordsLeaflet,
+          nome_via: route.legs?.[0]?.summary || "Via BR-479 / Principal",
+          google_maps_url: fallbackGmaps
+        });
+        desenharTrajetoNoMapa(coordsLeaflet, destLat, destLon);
+      }
+    } catch (e) {
+      console.error("Erro ao traçar rota viária OSRM:", e);
+    } finally {
+      setCarregandoRota(false);
+    }
+  };
+
+  // Traçado automático de rota ao carregar o mapa ou selecionar uma OS
+  useEffect(() => {
+    if (osSelecionada) {
+      const destLat = Number(osSelecionada.latitude_obra) || -15.775440;
+      const destLon = Number(osSelecionada.longitude_obra) || -47.779763;
+      tracarRotaViaria(destLat, destLon, osSelecionada.cliente_nome, osSelecionada.endereco_obra, osSelecionada.id);
+      return;
+    }
+
+    if (rotaAtiva) return;
+
+    const osDestino = ordensEmRota[0] || demandasPendentes[0];
+    if (osDestino) {
+      const destLat = Number(osDestino.latitude_obra) || -15.775440;
+      const destLon = Number(osDestino.longitude_obra) || -47.779763;
+      tracarRotaViaria(destLat, destLon, osDestino.cliente_nome, osDestino.endereco_obra, osDestino.id);
+    }
+  }, [osSelecionada, demandasPendentes, ordensEmRota, posicaoMedidor.lat, posicaoMedidor.lon]);
+
   // 3. Atualização de Marcadores e Traçado de Rotas
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -133,46 +283,41 @@ function RadarMapaInterativo({
     if (!map || !L || !markersGroupRef.current) return;
 
     markersGroupRef.current.clearLayers();
-    if (routeLineRef.current) {
-      map.removeLayer(routeLineRef.current);
-      routeLineRef.current = null;
-    }
 
     const bounds = [];
 
-    // Ícone do Medidor (Ponto Pulsante GPS)
+    // Ícone do Medidor (Ponto Pulsante GPS em Brasília)
     const iconeMedidor = L.divIcon({
       className: 'custom-medidor-icon',
       html: `
-        <div style="position: relative; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;">
-          <div style="position: absolute; width: 42px; height: 42px; background: rgba(59, 130, 246, 0.4); border-radius: 50%;"></div>
-          <div style="position: relative; width: 32px; height: 32px; background: #2563eb; border: 2px solid #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+        <div style="position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
+          <div style="position: absolute; width: 44px; height: 44px; background: rgba(59, 130, 246, 0.4); border-radius: 50%; animation: pulse 2s infinite;"></div>
+          <div style="position: relative; width: 34px; height: 34px; background: #2563eb; border: 2.5px solid #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 17px; box-shadow: 0 4px 14px rgba(0,0,0,0.55);">
             🛵
           </div>
         </div>
       `,
-      iconSize: [42, 42],
-      iconAnchor: [21, 21]
+      iconSize: [44, 44],
+      iconAnchor: [22, 22]
     });
 
     L.marker([posicaoMedidor.lat, posicaoMedidor.lon], { icon: iconeMedidor })
       .addTo(markersGroupRef.current)
       .bindPopup(`
-        <div style="color: #0f172a; font-family: sans-serif; font-size: 12px;">
+        <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 170px;">
           <strong style="font-size: 13px; color: #1e40af;">📍 Sua Posição Atual</strong><br/>
-          <span>${medidor?.nome_completo || 'Medidor Conectado'}</span><br/>
-          <span style="color: #16a34a; font-weight: bold; font-size: 10px;">🟢 GPS Ativo em Tempo Real</span>
+          <span style="font-weight: 600;">${medidor?.nome_completo || 'Medidor (Você)'}</span><br/>
+          <span style="color: #64748b; font-size: 11px;">Brasília - DF</span><br/>
+          <span style="color: #16a34a; font-weight: bold; font-size: 10px; display: inline-block; margin-top: 3px;">🟢 GPS Ativo em Tempo Real</span>
         </div>
       `);
     bounds.push([posicaoMedidor.lat, posicaoMedidor.lon]);
 
-    const rotaCoordenadas = [[posicaoMedidor.lat, posicaoMedidor.lon]];
-
-    // Marcadores das Lojas Parceiras
+    // Marcadores das Lojas Parceiras em Brasília
     if (mostrarLojas) {
       lojas.forEach(loja => {
-        const lat = Number(loja.latitude) || -23.561684;
-        const lon = Number(loja.longitude) || -46.655981;
+        const lat = Number(loja.latitude) || -15.820200;
+        const lon = Number(loja.longitude) || -47.954800;
         const dist = calcularDistanciaKm(posicaoMedidor.lat, posicaoMedidor.lon, lat, lon);
 
         const iconeLoja = L.divIcon({
@@ -189,9 +334,9 @@ function RadarMapaInterativo({
         L.marker([lat, lon], { icon: iconeLoja })
           .addTo(markersGroupRef.current)
           .bindPopup(`
-            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px;">
+            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 180px;">
               <strong style="color: #0284c7; font-size: 13px;">🏢 ${loja.nome_fantasia}</strong><br/>
-              <span style="color: #64748b; font-size: 11px;">${loja.endereco || 'Endereço da loja'}</span><br/>
+              <span style="color: #64748b; font-size: 11px;">${loja.endereco || 'SIA Trecho 2, Brasília - DF'}</span><br/>
               <strong style="color: #334155; font-size: 11px; margin-top: 4px; display: block;">Distância: ${dist} km</strong>
             </div>
           `);
@@ -202,11 +347,9 @@ function RadarMapaInterativo({
     // Marcadores das Minhas Obras (Em Rota / Aceitas)
     if (mostrarMinhaRota) {
       ordensEmRota.forEach(os => {
-        const lat = Number(os.latitude_obra) || -23.548900;
-        const lon = Number(os.longitude_obra) || -46.638800;
+        const lat = Number(os.latitude_obra) || -15.797101;
+        const lon = Number(os.longitude_obra) || -47.889489;
         const dist = calcularDistanciaKm(posicaoMedidor.lat, posicaoMedidor.lon, lat, lon);
-
-        rotaCoordenadas.push([lat, lon]);
 
         const iconeEmRota = L.divIcon({
           className: 'custom-rota-icon',
@@ -219,10 +362,10 @@ function RadarMapaInterativo({
           iconAnchor: [17, 17]
         });
 
-        L.marker([lat, lon], { icon: iconeEmRota })
+        const marker = L.marker([lat, lon], { icon: iconeEmRota })
           .addTo(markersGroupRef.current)
           .bindPopup(`
-            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 180px;">
+            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 190px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <strong style="color: #059669; font-size: 13px;">#${String(os.id).padStart(4, '0')} ${os.cliente_nome}</strong>
                 <span style="background: #ecfdf5; color: #059669; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px;">EM ROTA</span>
@@ -234,11 +377,26 @@ function RadarMapaInterativo({
               <div style="font-size: 10px; color: #64748b; margin-top: 2px;">
                 🚗 ${dist} km da sua posição
               </div>
-              <a href="https://www.google.com/maps/dir/?api=1&origin=${posicaoMedidor.lat},${posicaoMedidor.lon}&destination=${lat},${lon}" target="_blank" rel="noreferrer" style="display: block; text-align: center; background: #2563eb; color: white; padding: 6px; border-radius: 6px; text-decoration: none; font-size: 10px; font-weight: bold; margin-top: 6px;">
+              <button id="btn-rota-popup-${os.id}" style="width: 100%; background: #2563eb; color: #ffffff; border: none; padding: 7px; border-radius: 8px; font-weight: 700; font-size: 10px; cursor: pointer; margin-top: 6px;">
+                🛣️ Traçar Rota no Mapa
+              </button>
+              <a href="https://www.google.com/maps/dir/?api=1&origin=${posicaoMedidor.lat},${posicaoMedidor.lon}&destination=${encodeURIComponent(os.endereco_obra || `${lat},${lon}`)}" target="_blank" rel="noreferrer" style="display: block; text-align: center; color: #2563eb; font-weight: bold; font-size: 10px; margin-top: 6px; text-decoration: none;">
                 🗺️ Navegar no Google Maps
               </a>
             </div>
           `);
+
+        marker.on('popupopen', () => {
+          setTimeout(() => {
+            const btn = document.getElementById(`btn-rota-popup-${os.id}`);
+            if (btn) {
+              btn.onclick = () => {
+                tracarRotaViaria(lat, lon, os.cliente_nome, os.endereco_obra, os.id);
+              };
+            }
+          }, 50);
+        });
+
         bounds.push([lat, lon]);
       });
     }
@@ -246,8 +404,8 @@ function RadarMapaInterativo({
     // Marcadores de Demandas Abertas (Oportunidades no Radar)
     if (mostrarDemandas) {
       demandasPendentes.forEach(os => {
-        const lat = Number(os.latitude_obra) || -23.185700;
-        const lon = Number(os.longitude_obra) || -46.897800;
+        const lat = Number(os.latitude_obra) || -15.775440;
+        const lon = Number(os.longitude_obra) || -47.779763;
         const dist = calcularDistanciaKm(posicaoMedidor.lat, posicaoMedidor.lon, lat, lon);
         const isPago = os.status_pagamento === 'PAGO';
         const isAgendado = Boolean(os.data_agendada && os.hora_agendada) || Boolean(os.termos_aceitos);
@@ -268,7 +426,7 @@ function RadarMapaInterativo({
         const marker = L.marker([lat, lon], { icon: iconeDemanda })
           .addTo(markersGroupRef.current)
           .bindPopup(`
-            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 200px;">
+            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 210px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <strong style="color: #b45309; font-size: 13px;">${os.cliente_nome}</strong>
                 <span style="background: ${isPago && isAgendado ? '#d1fae5' : '#fef3c7'}; color: ${isPago && isAgendado ? '#065f46' : '#b45309'}; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px;">
@@ -287,6 +445,9 @@ function RadarMapaInterativo({
                   <strong style="color: #16a34a; font-size: 13px;">${formatarMoeda(os.custo_medidor)}</strong>
                 </div>
               </div>
+              <button id="btn-rota-demanda-${os.id}" style="width: 100%; background: #2563eb; color: #ffffff; border: none; padding: 7px; border-radius: 8px; font-weight: 700; font-size: 10px; cursor: pointer; margin-bottom: 5px;">
+                🛣️ Traçar Rota até Aqui
+              </button>
               ${isPago && isAgendado ? `
                 <button id="btn-aceitar-mapa-${os.id}" style="width: 100%; background: #10b981; color: #ffffff; border: none; padding: 8px; border-radius: 8px; font-weight: 900; font-size: 11px; cursor: pointer; text-transform: uppercase;">
                   ✅ Confirmar Medição
@@ -296,14 +457,20 @@ function RadarMapaInterativo({
                   ${!isPago ? '⏳ Aguardando Pagamento' : '⏳ Aguardando Agendamento'}
                 </div>
               `}
-              <a href="https://www.google.com/maps/dir/?api=1&origin=${posicaoMedidor.lat},${posicaoMedidor.lon}&destination=${lat},${lon}" target="_blank" rel="noreferrer" style="display: block; text-align: center; color: #2563eb; font-weight: bold; font-size: 10px; margin-top: 6px; text-decoration: none;">
-                🗺️ Rota no Google Maps
+              <a href="https://www.google.com/maps/dir/?api=1&origin=${posicaoMedidor.lat},${posicaoMedidor.lon}&destination=${encodeURIComponent(os.endereco_obra || `${lat},${lon}`)}" target="_blank" rel="noreferrer" style="display: block; text-align: center; color: #2563eb; font-weight: bold; font-size: 10px; margin-top: 6px; text-decoration: none;">
+                🗺️ Abrir Rota no Google Maps
               </a>
             </div>
           `);
 
         marker.on('popupopen', () => {
           setTimeout(() => {
+            const btnRota = document.getElementById(`btn-rota-demanda-${os.id}`);
+            if (btnRota) {
+              btnRota.onclick = () => {
+                tracarRotaViaria(lat, lon, os.cliente_nome, os.endereco_obra, os.id);
+              };
+            }
             const btn = document.getElementById(`btn-aceitar-mapa-${os.id}`);
             if (btn) {
               btn.onclick = () => {
@@ -317,17 +484,7 @@ function RadarMapaInterativo({
       });
     }
 
-    // Traçado da Linha de Rota Otimizada
-    if (rotaCoordenadas.length > 1) {
-      routeLineRef.current = L.polyline(rotaCoordenadas, {
-        color: '#38bdf8',
-        weight: 3,
-        dashArray: '8, 8',
-        opacity: 0.8
-      }).addTo(map);
-    }
-
-    if (bounds.length > 0) {
+    if (!rotaAtiva && bounds.length > 0) {
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
     }
   }, [posicaoMedidor, lojas, demandasPendentes, ordensEmRota, mostrarLojas, mostrarMinhaRota, mostrarDemandas, filtroRaio]);
@@ -339,18 +496,18 @@ function RadarMapaInterativo({
   };
 
   const demandasOrdenadasProximidade = [...demandasPendentes].map(os => {
-    const lat = Number(os.latitude_obra) || -23.185700;
-    const lon = Number(os.longitude_obra) || -46.897800;
+    const lat = Number(os.latitude_obra) || -15.775440;
+    const lon = Number(os.longitude_obra) || -47.779763;
     const dist = calcularDistanciaKm(posicaoMedidor.lat, posicaoMedidor.lon, lat, lon);
-    return { ...os, distancia_km: dist };
+    return { ...os, distancia_km: dist, lat, lon };
   }).sort((a, b) => a.distancia_km - b.distancia_km);
 
   return (
-    <div className="relative w-full h-[65vh] md:h-[72vh] bg-slate-950 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col">
+    <div className="relative w-full h-[68vh] md:h-[76vh] bg-slate-950 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col">
       <div className="p-3.5 bg-slate-900/90 backdrop-blur border-b border-slate-800 flex flex-wrap justify-between items-center gap-3 z-10">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-black text-white flex items-center gap-1.5 mr-2">
-            <span className="text-blue-400">🗺️</span> Radar Logístico
+            <span className="text-blue-400">🗺️</span> Radar Logístico (Brasília)
           </span>
 
           <button
@@ -406,10 +563,10 @@ function RadarMapaInterativo({
 
           <button
             onClick={centralizarEmMim}
-            title="Centralizar no Medidor"
+            title="Centralizar no seu GPS em Brasília"
             className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1"
           >
-            <span>🎯</span> <span className="hidden sm:inline">Minha Posição</span>
+            <span>🎯</span> <span className="hidden sm:inline">Meu GPS</span>
           </button>
         </div>
       </div>
@@ -417,9 +574,89 @@ function RadarMapaInterativo({
       <div className="flex-1 relative w-full h-full">
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 
+        {/* 🛣️ HUD Flutuante de Rota Ativa (Estilo Google Maps / Waze) */}
+        {rotaAtiva && (
+          <div className="absolute top-4 left-4 right-4 md:left-4 md:right-auto md:w-96 bg-slate-900/95 backdrop-blur-md border border-blue-500/40 p-4 rounded-2xl shadow-2xl z-20 text-white animate-in fade-in duration-300">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500"></span>
+                </span>
+                <span className="text-[11px] font-black text-blue-400 uppercase tracking-wider">
+                  Rota Automática • {rotaAtiva.nome_via || "Via BR-479"}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  const map = mapInstanceRef.current;
+                  if (routeLineRef.current && map) {
+                    map.removeLayer(routeLineRef.current);
+                    routeLineRef.current = null;
+                  }
+                  if (routeGlowRef.current && map) {
+                    map.removeLayer(routeGlowRef.current);
+                    routeGlowRef.current = null;
+                  }
+                  setRotaAtiva(null);
+                }}
+                className="text-slate-400 hover:text-white text-xs p-1"
+                title="Fechar rota"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mb-3">
+              <div className="text-sm font-black text-white truncate flex items-center gap-1.5">
+                <span>🏁</span> {rotaAtiva.cliente_nome}
+              </div>
+              <div className="text-xs text-slate-300 truncate flex items-center gap-1 mt-0.5">
+                <span className="text-slate-500">📍</span> {rotaAtiva.endereco_obra}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800/80 mb-3">
+              <div className="text-center">
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Distância</span>
+                <span className="text-sm font-mono font-black text-sky-400">{rotaAtiva.distancia_km} km</span>
+              </div>
+              <div className="text-center border-x border-slate-800">
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Tempo Est.</span>
+                <span className="text-sm font-mono font-black text-amber-400">{rotaAtiva.duracao_minutos} min</span>
+              </div>
+              <div className="text-center">
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Deslocamento</span>
+                <span className="text-sm font-mono font-black text-emerald-400">
+                  {formatarMoeda ? formatarMoeda(rotaAtiva.tarifa_estimada) : `R$ ${rotaAtiva.tarifa_estimada?.toFixed(2)}`}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <a
+                href={rotaAtiva.google_maps_url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-600/30"
+              >
+                <span>🗺️</span> Abrir no Google Maps
+              </a>
+              <button
+                onClick={() => tracarRotaViaria(rotaAtiva.destLat, rotaAtiva.destLon, rotaAtiva.cliente_nome, rotaAtiva.endereco_obra, rotaAtiva.os_id)}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2.5 rounded-xl text-xs transition-colors"
+                title="Recalcular a partir do meu GPS atual"
+              >
+                🔄
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ⚡ Lista de Oportunidades por Proximidade */}
         {demandasPendentes.length > 0 && (
-          <div className="absolute bottom-4 left-4 right-4 md:right-auto md:w-96 max-h-56 bg-slate-900/95 backdrop-blur border border-slate-800 rounded-2xl p-4 shadow-2xl z-10 overflow-hidden flex flex-col">
-            <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-800">
+          <div className="absolute bottom-4 left-4 right-4 md:right-auto md:w-96 max-h-52 bg-slate-900/95 backdrop-blur border border-slate-800 rounded-2xl p-3.5 shadow-2xl z-10 overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-800">
               <span className="text-xs font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                 <span>⚡</span> Oportunidades por Proximidade
               </span>
@@ -428,20 +665,29 @@ function RadarMapaInterativo({
 
             <div className="space-y-2 overflow-y-auto custom-scrollbar pr-1 flex-1">
               {demandasOrdenadasProximidade.slice(0, 4).map(os => (
-                <div key={os.id} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 flex justify-between items-center hover:border-amber-500/50 transition-colors">
+                <div key={os.id} className="bg-slate-950 p-2 rounded-xl border border-slate-800/80 flex justify-between items-center hover:border-blue-500/50 transition-colors">
                   <div className="truncate mr-2">
                     <p className="text-xs font-bold text-white truncate">{os.cliente_nome}</p>
                     <p className="text-[10px] text-slate-400 truncate">{os.endereco_obra}</p>
                     <p className="text-[10px] font-mono text-blue-400 mt-0.5">
-                      📍 {os.distancia_km} km de você • {formatarMoeda(os.custo_medidor)}
+                      🚗 {os.distancia_km} km • {formatarMoeda(os.custo_medidor)}
                     </p>
                   </div>
-                  <button
-                    onClick={() => aceitarDemanda(os.id)}
-                    className="bg-amber-500 hover:bg-amber-400 text-slate-900 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase whitespace-nowrap shadow transition-transform hover:scale-105"
-                  >
-                    Aceitar
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => tracarRotaViaria(os.lat, os.lon, os.cliente_nome, os.endereco_obra, os.id)}
+                      className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase whitespace-nowrap shadow transition-transform hover:scale-105"
+                      title="Traçar rota no mapa"
+                    >
+                      🛣️ Rota
+                    </button>
+                    <button
+                      onClick={() => aceitarDemanda(os.id)}
+                      className="bg-amber-500 hover:bg-amber-400 text-slate-900 px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase whitespace-nowrap shadow transition-transform hover:scale-105"
+                    >
+                      Aceitar
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -476,8 +722,8 @@ function ModalRastreioLoja({ os, onClose, formatarMoeda }) {
   useEffect(() => {
     if (!mapContainerRef.current || !window.L) return;
 
-    const latObra = Number(os.latitude_obra) || -23.548900;
-    const lonObra = Number(os.longitude_obra) || -46.638800;
+    const latObra = Number(os.latitude_obra) || -15.775440;
+    const lonObra = Number(os.longitude_obra) || -47.779763;
     const latMed = posMedidor?.lat || -23.550520;
     const lonMed = posMedidor?.lon || -46.633308;
 
@@ -719,6 +965,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
   
   const [abaMedidor, setAbaMedidor] = useState('minhas')
   const [visaoDemanda, setVisaoDemanda] = useState('lista')
+  const [osRotaSelecionada, setOsRotaSelecionada] = useState(null)
   
   const mesAtualStr = new Date().toISOString().slice(0, 7)
   const [filtroMesCaixa, setFiltroMesCaixa] = useState(mesAtualStr)
@@ -977,6 +1224,11 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
                       aceitarDemanda={aceitarDemanda}
                       recusarDemanda={recusarDemanda}
                       refId={refId}
+                      posicaoMedidor={{ lat: -15.779017, lon: -47.997900 }}
+                      onVerNoMapa={(osAlvo) => {
+                        setOsRotaSelecionada(osAlvo);
+                        setVisaoDemanda('mapa');
+                      }}
                     />
                   ))}
                   {medidorPendentes.length === 0 && <div className="col-span-full py-12 text-center text-slate-500 font-medium">Nenhuma demanda com documentos completos no momento.</div>}
@@ -987,6 +1239,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
                   lojas={lojas}
                   demandasPendentes={medidorPendentes}
                   ordensEmRota={medidorEmRota}
+                  osSelecionada={osRotaSelecionada}
                   aceitarDemanda={aceitarDemanda}
                   formatarMoeda={formatarMoeda}
                   onAtualizarLocalizacao={(lat, lon) => {

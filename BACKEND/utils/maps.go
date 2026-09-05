@@ -91,23 +91,114 @@ func geocodificarNominatim(client *http.Client, endereco string) (float64, float
 	return lat, lon, nil
 }
 
-// GeocodificarEndereco converte um endereço em latitude e longitude (com fallback)
+// Constantes de fallback para Brasília - DF (Marco Zero / Plano Piloto)
+const (
+	FallbackLatBSB      = -15.793889
+	FallbackLonBSB      = -47.882778
+	FallbackEnderecoBSB = "Plano Piloto, Brasília - DF"
+)
+
+type osrmFullResponse struct {
+	Code   string `json:"code"`
+	Routes []struct {
+		Distance float64 `json:"distance"`
+		Duration float64 `json:"duration"`
+		Geometry struct {
+			Coordinates [][]float64 `json:"coordinates"` // [lon, lat]
+		} `json:"geometry"`
+		Legs []struct {
+			Summary string `json:"summary"`
+		} `json:"legs"`
+	} `json:"routes"`
+}
+
+type DetalhesRota struct {
+	DistanciaKm    float64     `json:"distancia_km"`
+	DuracaoMinutos int         `json:"duracao_minutos"`
+	Tarifa         float64     `json:"tarifa_estimada"`
+	Coordenadas    [][]float64 `json:"coordenadas"` // Formato Leaflet [lat, lon]
+	NomeVia        string      `json:"nome_via"`
+	GoogleMapsURL  string      `json:"google_maps_url"`
+}
+
+// ObterDetalhesRota busca trajeto viário completo com coordenadas, km e duração
+func ObterDetalhesRota(lat1, lon1, lat2, lon2 float64) (*DetalhesRota, error) {
+	if lat1 == 0 && lon1 == 0 {
+		lat1, lon1 = FallbackLatBSB, FallbackLonBSB
+	}
+	if lat2 == 0 && lon2 == 0 {
+		lat2, lon2 = -15.775440, -47.779763 // Paranoá como destino padrão
+	}
+
+	client := &http.Client{Timeout: 8 * time.Second}
+	reqURL := fmt.Sprintf("https://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?overview=full&geometries=geojson", lon1, lat1, lon2, lat2)
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "SGM_PRO_FieldService/1.0 (contato@sgmpro.com.br)")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var osrm osrmFullResponse
+	if err := json.NewDecoder(resp.Body).Decode(&osrm); err != nil || osrm.Code != "Ok" || len(osrm.Routes) == 0 {
+		return nil, fmt.Errorf("falha ao obter rota do servidor viário")
+	}
+
+	route := osrm.Routes[0]
+	km := math.Round((route.Distance/1000.0)*10) / 10
+	dur := int(math.Round(route.Duration / 60.0))
+	if dur < 1 {
+		dur = 1
+	}
+
+	// Inverte coordenadas do GeoJSON [lon, lat] para o padrão Leaflet [lat, lon]
+	var coordsLeaflet [][]float64
+	for _, p := range route.Geometry.Coordinates {
+		if len(p) >= 2 {
+			coordsLeaflet = append(coordsLeaflet, []float64{p[1], p[0]})
+		}
+	}
+
+	nomeVia := "Rota principal"
+	if len(route.Legs) > 0 && route.Legs[0].Summary != "" {
+		nomeVia = route.Legs[0].Summary
+	}
+
+	tarifa, _, _ := calcularTarifaUber(km, float64(dur))
+	mapsURL := fmt.Sprintf("https://www.google.com/maps/dir/?api=1&origin=%f,%f&destination=%f,%f", lat1, lon1, lat2, lon2)
+
+	return &DetalhesRota{
+		DistanciaKm:    km,
+		DuracaoMinutos: dur,
+		Tarifa:         tarifa,
+		Coordenadas:    coordsLeaflet,
+		NomeVia:        nomeVia,
+		GoogleMapsURL:  mapsURL,
+	}, nil
+}
+
+// GeocodificarEndereco converte um endereço em latitude e longitude (com fallback em Brasília)
 func GeocodificarEndereco(endereco string) (float64, float64, error) {
 	endereco = strings.TrimSpace(endereco)
 	if endereco == "" {
-		return -23.550520, -46.633308, nil // Praça da Sé, SP como fallback
+		return FallbackLatBSB, FallbackLonBSB, nil
 	}
 	client := &http.Client{Timeout: 5 * time.Second}
 	lat, lon, err := geocodificarNominatim(client, endereco)
 	if err != nil {
-		return -23.550520, -46.633308, err
+		return FallbackLatBSB, FallbackLonBSB, err
 	}
 	return lat, lon, nil
 }
 
 // rotearOSRM busca distância em km e duração em minutos entre duas coordenadas
 func rotearOSRM(client *http.Client, lat1, lon1, lat2, lon2 float64) (float64, float64, error) {
-	reqURL := fmt.Sprintf("http://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?overview=false", lon1, lat1, lon2, lat2)
+	reqURL := fmt.Sprintf("https://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?overview=false", lon1, lat1, lon2, lat2)
 	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
 		return 0, 0, err
@@ -136,10 +227,10 @@ func CalcularDeslocamentoDinamico(origem string, destino string) (float64, float
 	destino = strings.TrimSpace(destino)
 
 	if origem == "" {
-		origem = "Praça da Sé, São Paulo, SP"
+		origem = FallbackEnderecoBSB
 	}
 	if destino == "" {
-		destino = "Praça da Sé, São Paulo, SP"
+		destino = FallbackEnderecoBSB
 	}
 
 	client := &http.Client{Timeout: 6 * time.Second}

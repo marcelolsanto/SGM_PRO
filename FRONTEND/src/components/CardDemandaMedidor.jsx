@@ -1,10 +1,13 @@
-export default function CardDemandaMedidor({ os, formatarMoeda, aceitarDemanda, recusarDemanda, refId }) {
+export default function CardDemandaMedidor({ os, formatarMoeda, aceitarDemanda, recusarDemanda, refId, posicaoMedidor, onVerNoMapa }) {
   const totalM2 = os.ambientes?.reduce((acc, a) => acc + a.area_estimada_m2, 0) || 0;
   
   const isPago = os.status_pagamento === 'PAGO';
   const isAgendado = Boolean(os.data_agendada && os.hora_agendada) || Boolean(os.termos_aceitos);
   const isDirecionada = Boolean(os.medidor_id && os.medidor_id === refId);
   const isProntaParaAceitar = isPago && isAgendado;
+
+  const origemLat = posicaoMedidor?.lat || -15.779017;
+  const origemLon = posicaoMedidor?.lon || -47.997900;
 
   return (
     <div className={`bg-slate-900 p-5 rounded-3xl relative flex flex-col justify-between transition-all shadow-xl ${
@@ -73,14 +76,24 @@ export default function CardDemandaMedidor({ os, formatarMoeda, aceitarDemanda, 
             ))}
           </ul>
 
-          <a 
-            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(os.endereco_obra)}`} 
-            target="_blank" 
-            rel="noreferrer" 
-            className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-blue-400 py-2.5 rounded-xl text-xs font-bold transition-colors"
-          >
-            🗺️ Rota no Google Maps
-          </a>
+          <div className="grid grid-cols-2 gap-2">
+            <a 
+              href={`https://www.google.com/maps/dir/?api=1&origin=${origemLat},${origemLon}&destination=${encodeURIComponent(os.endereco_obra)}`} 
+              target="_blank" 
+              rel="noreferrer" 
+              className="flex items-center justify-center gap-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 py-2.5 rounded-xl text-xs font-bold transition-colors"
+            >
+              🗺️ Google Maps
+            </a>
+            {onVerNoMapa && (
+              <button 
+                onClick={() => onVerNoMapa(os)}
+                className="flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 py-2.5 rounded-xl text-xs font-bold transition-colors"
+              >
+                🛣️ Traçar no Radar
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mb-5 px-1">

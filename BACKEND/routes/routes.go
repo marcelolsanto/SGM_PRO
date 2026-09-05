@@ -23,6 +23,9 @@ func Setup(app *fiber.App) {
 	app.Get("/magic/:token", controllers.ObterMagicLink)
 	app.Put("/magic/:token/aceitar", controllers.AceitarMagicLink)
 
+	// Rotas de Traçado de Rotas Viárias
+	app.Get("/api/rotas/tracar", controllers.TracarRota)
+
 	// 2. GRUPO PROTEGIDO (Passa pelo AuthMiddleware)
 	apiProtegida := app.Group("/api", middleware.Auth)
 
@@ -36,4 +39,5 @@ func Setup(app *fiber.App) {
 	RegisterClienteRoutes(apiProtegida)
 	RegisterMedidorRoutes(apiProtegida)
 	RegisterAmbienteRoutes(apiProtegida)
+	RegisterRotasRoutes(apiProtegida)
 }
