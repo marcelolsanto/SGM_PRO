@@ -30,6 +30,8 @@ type OrdemServico struct {
 	DataPagamento    *time.Time `gorm:"column:data_pagamento" json:"data_pagamento"`
 	DataAgendada     string     `gorm:"column:data_agendada" json:"data_agendada"`
 	HoraAgendada     string     `gorm:"column:hora_agendada" json:"hora_agendada"`
+	OrdemRota        int        `gorm:"column:ordem_rota;default:0" json:"ordem_rota"`
+	TempoEstimadoMin int        `gorm:"column:tempo_estimado_min;default:60" json:"tempo_estimado_min"`
 	DataAceite       *time.Time `gorm:"column:data_aceite" json:"data_aceite"`
 	DataConclusao    *time.Time `gorm:"column:data_conclusao" json:"data_conclusao"`
 	CriadoEm         time.Time  `gorm:"column:criado_em;autoCreateTime" json:"criado_em"`

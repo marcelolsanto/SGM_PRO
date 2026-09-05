@@ -42,10 +42,24 @@ export default function CardRotaMedidor({ os, formatarMoeda, marcarChegada, entr
     <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-xl overflow-hidden flex flex-col">
       <div className="p-5 border-b border-slate-800">
         <div className="flex justify-between items-start mb-2">
-          <h2 className="text-xl font-black text-white">{os.cliente_nome}</h2>
+          <div className="flex items-center gap-2">
+            {os.ordem_rota > 0 && (
+              <span className="bg-emerald-500 text-white text-xs px-2.5 py-0.5 rounded-full font-black shadow-sm">
+                #{os.ordem_rota}
+              </span>
+            )}
+            <h2 className="text-xl font-black text-white">{os.cliente_nome}</h2>
+          </div>
           {os.urgencia && <span className="bg-red-500 text-white text-[9px] px-2 py-1 rounded font-bold uppercase tracking-widest">Urgência</span>}
         </div>
-        <p className="text-slate-400 text-xs mb-4">📍 {os.endereco_obra}</p>
+        <div className="flex items-center justify-between text-xs mb-4">
+          <p className="text-slate-400 truncate mr-2">📍 {os.endereco_obra}</p>
+          {os.hora_agendada && (
+            <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-md font-mono font-bold whitespace-nowrap text-[10px]">
+              ⏰ {os.hora_agendada}
+            </span>
+          )}
+        </div>
 
         {os.status === 'EM_ROTA' && (
           <div className="w-full h-32 bg-slate-800 relative mb-4 rounded-xl overflow-hidden border border-slate-700">
