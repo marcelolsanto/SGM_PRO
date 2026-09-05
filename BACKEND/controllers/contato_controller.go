@@ -243,7 +243,7 @@ func dispararEmailContato(p ContatoPayload, leadID uint) {
 					logMsg("✅ [SGM.PRO] E-mail de lead '%s' entregue com sucesso via Resend para %v (Resposta: %s)", p.Nome, destinatarios, string(respBytes))
 					enviado = true
 				} else if respHttp.StatusCode == 403 {
-					// Fallback de Sandbox do Resend: só aceita marcelo.lsantos@bandtec.com.br até verificar domínio
+					// Fallback de Sandbox do Resend: só aceita marcelo.lsantos@bandtec.com.br
 					logMsg("⚠️ Resend 403 (Sandbox de teste). Redirecionando para marcelo.lsantos@bandtec.com.br... Resposta: %s", string(respBytes))
 					payloadResend["to"] = []string{"marcelo.lsantos@bandtec.com.br"}
 					payloadResend["from"] = "SGM.PRO <onboarding@resend.dev>"
@@ -257,12 +257,23 @@ func dispararEmailContato(p ContatoPayload, leadID uint) {
 						respRetry.Body.Close()
 						if respRetry.StatusCode == 200 || respRetry.StatusCode == 201 {
 							logMsg("✅ [SGM.PRO] E-mail entregue com sucesso no Resend para marcelo.lsantos@bandtec.com.br: %s", string(retryBytes))
-							enviado = true
 						} else {
 							logMsg("❌ Erro no envio Resend fallback: HTTP %d - %s", respRetry.StatusCode, string(retryBytes))
 						}
 					} else {
 						logMsg("❌ Erro HTTP ao conectar no Resend: %v", errRetry)
+					}
+
+					// Encaminha os outros destinatários que o sandbox do Resend barrou para o SMTP Gmail
+					var restantes []string
+					for _, dest := range destinatarios {
+						if !strings.EqualFold(dest, "marcelo.lsantos@bandtec.com.br") {
+							restantes = append(restantes, dest)
+						}
+					}
+					destinatarios = restantes
+					if len(destinatarios) == 0 {
+						enviado = true
 					}
 				} else {
 					logMsg("❌ Erro inesperado Resend HTTP %d: %s", respHttp.StatusCode, string(respBytes))
@@ -273,8 +284,8 @@ func dispararEmailContato(p ContatoPayload, leadID uint) {
 		}
 	}
 
-	// 2. Fallback para SMTP Gmail padrão
-	if !enviado {
+	// 2. Fallback para SMTP Gmail padrão (para enviar para os destinatários restantes ou todos)
+	if !enviado && len(destinatarios) > 0 {
 		smtpHost := strings.Trim(strings.TrimSpace(os.Getenv("EMAIL_HOST")), "\"'")
 		smtpPort := strings.Trim(strings.TrimSpace(os.Getenv("EMAIL_PORT")), "\"'")
 		smtpUser := strings.Trim(strings.TrimSpace(os.Getenv("EMAIL_HOST_USER")), "\"'")
@@ -286,8 +297,9 @@ func dispararEmailContato(p ContatoPayload, leadID uint) {
 			if fromEmail == "" {
 				fromEmail = smtpUser
 			}
+			fromHeader := fmt.Sprintf("SGM.PRO <%s>", fromEmail)
 			msg := []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nReply-To: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
-				fromEmail, strings.Join(destinatarios, ", "), p.Email, assunto, corpoHTML))
+				fromHeader, strings.Join(destinatarios, ", "), p.Email, assunto, corpoHTML))
 
 			auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 			addr := fmt.Sprintf("%s:%s", smtpHost, smtpPort)
@@ -437,8 +449,9 @@ func dispararConfirmacaoCliente(p ContatoPayload, leadID uint) {
 			if fromEmail == "" {
 				fromEmail = smtpUser
 			}
+			fromHeader := fmt.Sprintf("SGM.PRO <%s>", fromEmail)
 			msg := []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
-				fromEmail, p.Email, assunto, corpoHTML))
+				fromHeader, p.Email, assunto, corpoHTML))
 
 			auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 			addr := fmt.Sprintf("%s:%s", smtpHost, smtpPort)
