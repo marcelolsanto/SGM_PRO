@@ -17,9 +17,11 @@ func Setup(app *fiber.App) {
 	app.Post("/api/esqueci-senha", controllers.EsqueciSenha)
 	app.Post("/api/resetar-senha", controllers.ResetarSenha)
 
-	// Rotas do Link Mágico do Cliente
+	// Rotas do Link Mágico do Cliente (acessível com ou sem /api)
 	app.Get("/api/magic/:token", controllers.ObterMagicLink)
 	app.Put("/api/magic/:token/aceitar", controllers.AceitarMagicLink)
+	app.Get("/magic/:token", controllers.ObterMagicLink)
+	app.Put("/magic/:token/aceitar", controllers.AceitarMagicLink)
 
 	// 2. GRUPO PROTEGIDO (Passa pelo AuthMiddleware)
 	apiProtegida := app.Group("/api", middleware.Auth)

@@ -34,10 +34,12 @@ function App() {
     if (perfil === 'MEDIDOR') setAbaAtiva('operacoes')
   }, [perfil])
 
-  // 🔥 A CORREÇÃO ESTÁ AQUI: Agora ele captura o código na barra de endereços do navegador e entrega à tela do Link Mágico!
-  if (window.location.pathname.startsWith('/cliente/')) return <MagicLink token={window.location.pathname.split('/').pop()} />
+  // Captura o token na barra de endereços do navegador de forma segura
+  const clienteMatch = window.location.pathname.match(/^\/cliente\/([^/?#]+)/)
+  if (clienteMatch) return <MagicLink token={clienteMatch[1]} />
   
-  if (window.location.pathname.startsWith('/resetar-senha/')) return <ResetarSenha token={window.location.pathname.split('/').pop()} />
+  const resetMatch = window.location.pathname.match(/^\/resetar-senha\/([^/?#]+)/)
+  if (resetMatch) return <ResetarSenha token={resetMatch[1]} />
   if (!token) return <Login setToken={setToken} setUsuario={setUsuario} />
 
   const menuAdmin = [

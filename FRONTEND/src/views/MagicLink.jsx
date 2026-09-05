@@ -87,8 +87,10 @@ export default function MagicLink({ token }) {
 
   useEffect(() => {
     console.log(`🚀 [FRONTEND] 1. Iniciando carregamento do Magic Link. Token da URL: ${token}`);
+    setLoading(true);
+    setErro(false);
 
-    fetch(`/magic/${token}`)
+    fetch(`/api/magic/${token}`)
       .then(res => {
         console.log(`📡 [FRONTEND] 2. Backend respondeu com Status HTTP: ${res.status}`);
         if (!res.ok) throw new Error('Link inválido ou expirado');
@@ -96,10 +98,16 @@ export default function MagicLink({ token }) {
       })
       .then(data => {
         console.log('✅ [FRONTEND] 3. Dados da Obra recebidos perfeitamente:', data);
-        setOsData(data);
+        setOs(data);
+        if (data.termos_aceitos) {
+          setAceito(true);
+        }
+        setLoading(false);
       })
       .catch(err => {
         console.error('❌ [FRONTEND] 3. Erro no carregamento:', err.message);
+        setErro(true);
+        setLoading(false);
       });
   }, [token]);
 
