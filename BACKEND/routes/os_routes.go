@@ -8,6 +8,7 @@ import (
 
 func RegisterOsRoutes(api fiber.Router) {
 	api.Post("/os", controllers.CriarOrdem)
+	api.Get("/estatisticas/anual", controllers.ObterEstatisticasAnuais)
 	api.Get("/os", controllers.ListarOrdens)
 	api.Get("/os/:id", controllers.ObterOrdem)
 	api.Put("/os/:id", controllers.AtualizarOrdem)

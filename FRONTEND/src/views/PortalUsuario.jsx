@@ -1575,11 +1575,24 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
   // Localização do medidor para cálculos de ordenação e mapa
   const [posicaoMedidor, setPosicaoMedidor] = useState({ lat: -15.779017, lon: -47.997900 })
 
-  const mesAtualStr = new Date().toISOString().slice(0, 7)
-  const [filtroMesCaixa, setFiltroMesCaixa] = useState(mesAtualStr)
+  const anoAtualStr = new Date().getFullYear().toString()
+  const mesAtualNumStr = String(new Date().getMonth() + 1).padStart(2, '0')
+  const mesAtualStr = `${anoAtualStr}-${mesAtualNumStr}`
+
+  // Filtros Caixa (Medidor)
+  const [filtroAnoCaixa, setFiltroAnoCaixa] = useState(anoAtualStr)
+  const [filtroMesCaixa, setFiltroMesCaixa] = useState('TODOS')
   const [filtroLojaCaixa, setFiltroLojaCaixa] = useState('TODAS')
 
-  const [filtroMes, setFiltroMes] = useState(mesAtualStr)
+  // Filtros Concluídas (Medidor)
+  const [filtroAnoConcluidas, setFiltroAnoConcluidas] = useState(anoAtualStr)
+  const [filtroMesConcluidas, setFiltroMesConcluidas] = useState('TODOS')
+  const [filtroLojaConcluidas, setFiltroLojaConcluidas] = useState('TODAS')
+  const [buscaConcluidas, setBuscaConcluidas] = useState('')
+
+  // Filtros Loja
+  const [filtroAnoLoja, setFiltroAnoLoja] = useState(anoAtualStr)
+  const [filtroMesLoja, setFiltroMesLoja] = useState('TODOS')
   const [filtroSecundario, setFiltroSecundario] = useState('TODOS')
   const [linkCopiado, setLinkCopiado] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -1597,7 +1610,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
 
   const carregarOrdens = () => {
     setLoading(true); 
-    axios.get('/api/os')
+    axios.get('/api/os?limit=1000')
       .then(res => { 
         setTodasOrdens(res.data || []); 
         setLoading(false); 
@@ -1787,19 +1800,47 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
   let medidorConcluidas = [];
   
   if (perfil === 'LOJA') {
-    const passaMes = o => filtroMes === 'TODOS' || o.criado_em.substring(0,7) === filtroMes
-    const passaSec = o => filtroSecundario === 'TODOS' || (o.medidor_id && o.medidor_id.toString() === filtroSecundario)
-    listaLoja = todasOrdens.filter(o => passaMes(o) && passaSec(o))
+    listaLoja = todasOrdens.filter(o => {
+      if (!o.criado_em) return true;
+      const osAno = new Date(o.criado_em).getFullYear().toString();
+      const osMes = String(new Date(o.criado_em).getMonth() + 1).padStart(2, '0');
+      const passaAno = filtroAnoLoja === 'TODOS' || osAno === filtroAnoLoja;
+      const passaMes = filtroMesLoja === 'TODOS' || osMes === filtroMesLoja;
+      const passaSec = filtroSecundario === 'TODOS' || (o.medidor_id && o.medidor_id.toString() === filtroSecundario);
+      return passaAno && passaMes && passaSec;
+    });
   } else {
-    medidorEmRota = todasOrdens.filter(os => os.medidor_id === refId && (os.status === 'EM_ROTA' || os.status === 'NO_LOCAL'))
-    medidorPendentes = todasOrdens.filter(os => os.status === 'PENDENTE_LOJA' && (!os.medidor_id || os.medidor_id === refId))
-    medidorConcluidas = todasOrdens.filter(os => os.medidor_id === refId && os.status === 'CONCLUIDO')
+    medidorEmRota = todasOrdens.filter(os => os.medidor_id === refId && (os.status === 'EM_ROTA' || os.status === 'NO_LOCAL'));
+    medidorPendentes = todasOrdens.filter(os => os.status === 'PENDENTE_LOJA' && (!os.medidor_id || os.medidor_id === refId));
     
-    let historicoBruto = todasOrdens.filter(os => os.medidor_id === refId && os.status === 'CONCLUIDO')
+    // Concluídas com filtros de Ano, Mês, Loja e Busca
+    medidorConcluidas = todasOrdens.filter(os => {
+      if (os.medidor_id !== refId || os.status !== 'CONCLUIDO') return false;
+      const osAno = os.criado_em ? new Date(os.criado_em).getFullYear().toString() : '';
+      const osMes = os.criado_em ? String(new Date(os.criado_em).getMonth() + 1).padStart(2, '0') : '';
+      const passaAno = filtroAnoConcluidas === 'TODOS' || osAno === filtroAnoConcluidas;
+      const passaMes = filtroMesConcluidas === 'TODOS' || osMes === filtroMesConcluidas;
+      const passaLoja = filtroLojaConcluidas === 'TODAS' || (os.loja_id && os.loja_id.toString() === filtroLojaConcluidas);
+      let passaBusca = true;
+      if (buscaConcluidas.trim()) {
+        const termo = buscaConcluidas.toLowerCase();
+        passaBusca = (os.cliente_nome || '').toLowerCase().includes(termo) ||
+                     (os.endereco_obra || '').toLowerCase().includes(termo) ||
+                     (os.loja?.nome_fantasia || '').toLowerCase().includes(termo);
+      }
+      return passaAno && passaMes && passaLoja && passaBusca;
+    });
+
+    // Histórico / Meu Caixa com filtros de Ano, Mês e Loja
+    let historicoBruto = todasOrdens.filter(os => os.medidor_id === refId && os.status === 'CONCLUIDO');
     medidorHistorico = historicoBruto.filter(os => {
-      const mesAno = `${new Date(os.criado_em).getFullYear()}-${String(new Date(os.criado_em).getMonth() + 1).padStart(2, '0')}`;
-      return (filtroMesCaixa === 'TODOS' || mesAno === filtroMesCaixa) && (filtroLojaCaixa === 'TODAS' || os.loja_id.toString() === filtroLojaCaixa);
-    })
+      const osAno = os.criado_em ? new Date(os.criado_em).getFullYear().toString() : '';
+      const osMes = os.criado_em ? String(new Date(os.criado_em).getMonth() + 1).padStart(2, '0') : '';
+      const passaAno = filtroAnoCaixa === 'TODOS' || osAno === filtroAnoCaixa;
+      const passaMes = filtroMesCaixa === 'TODOS' || osMes === filtroMesCaixa;
+      const passaLoja = filtroLojaCaixa === 'TODAS' || (os.loja_id && os.loja_id.toString() === filtroLojaCaixa);
+      return passaAno && passaMes && passaLoja;
+    });
   }
 
   // Filtragem e ordenação inteligente das demandas pendentes
@@ -2066,6 +2107,65 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
                 </div>
               </div>
 
+              {/* BARRA DE FILTROS: ANO, MÊS, LOJA E BUSCA DE CONCLUÍDAS */}
+              <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🗓️ Ano</label>
+                  <select 
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white outline-none font-bold text-sm" 
+                    value={filtroAnoConcluidas} 
+                    onChange={e => setFiltroAnoConcluidas(e.target.value)}
+                  >
+                    <option value="TODOS">Todos os Anos</option>
+                    <option value="2026">Ano 2026</option>
+                    <option value="2025">Ano 2025</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">📅 Mês</label>
+                  <select 
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-emerald-400 outline-none font-bold text-sm" 
+                    value={filtroMesConcluidas} 
+                    onChange={e => setFiltroMesConcluidas(e.target.value)}
+                  >
+                    <option value="TODOS">Todos os Meses</option>
+                    <option value="01">01 - Janeiro</option>
+                    <option value="02">02 - Fevereiro</option>
+                    <option value="03">03 - Março</option>
+                    <option value="04">04 - Abril</option>
+                    <option value="05">05 - Maio</option>
+                    <option value="06">06 - Junho</option>
+                    <option value="07">07 - Julho</option>
+                    <option value="08">08 - Agosto</option>
+                    <option value="09">09 - Setembro</option>
+                    <option value="10">10 - Outubro</option>
+                    <option value="11">11 - Novembro</option>
+                    <option value="12">12 - Dezembro</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🏢 Filtrar Loja</label>
+                  <select 
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white outline-none font-bold text-sm" 
+                    value={filtroLojaConcluidas} 
+                    onChange={e => setFiltroLojaConcluidas(e.target.value)}
+                  >
+                    <option value="TODAS">Todas as Lojas</option>
+                    {lojasDoMedidor.map(opt => <option key={opt.id} value={opt.id.toString()}>{opt.nome}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🔍 Buscar Cliente / Obra</label>
+                  <input 
+                    type="text" 
+                    placeholder="Filtrar por nome ou endereço..." 
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white placeholder-slate-500 outline-none focus:border-emerald-500 text-sm" 
+                    value={buscaConcluidas} 
+                    onChange={e => setBuscaConcluidas(e.target.value)} 
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {medidorConcluidas.map(os => {
                   let fotosCount = 0;
@@ -2207,9 +2307,52 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
                 <div className="bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-xl"><p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Projetos Entregues</p><p className="text-2xl md:text-3xl font-black text-blue-400 mt-1">{medidorHistorico.length}</p></div>
               </div>
               
-              <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Mês de Referência</label><select className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white outline-none" value={filtroMesCaixa} onChange={e => setFiltroMesCaixa(e.target.value)}><option value="TODOS">Todo o Histórico</option>{mesesDisponiveis.map(m => <option key={m} value={m}>{formatarMesAno(m)}</option>)}</select></div>
-                <div><label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Filtrar por Lojista</label><select className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white outline-none" value={filtroLojaCaixa} onChange={e => setFiltroLojaCaixa(e.target.value)}><option value="TODAS">Todas as Lojas</option>{lojasDoMedidor.map(opt => <option key={opt.id} value={opt.id.toString()}>{opt.nome}</option>)}</select></div>
+              <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl mb-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🗓️ Ano</label>
+                  <select 
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white outline-none font-bold text-sm" 
+                    value={filtroAnoCaixa} 
+                    onChange={e => setFiltroAnoCaixa(e.target.value)}
+                  >
+                    <option value="TODOS">Todos os Anos</option>
+                    <option value="2026">Ano 2026</option>
+                    <option value="2025">Ano 2025</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">📅 Mês de Referência</label>
+                  <select 
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-emerald-400 outline-none font-bold text-sm" 
+                    value={filtroMesCaixa} 
+                    onChange={e => setFiltroMesCaixa(e.target.value)}
+                  >
+                    <option value="TODOS">Todos os Meses</option>
+                    <option value="01">01 - Janeiro</option>
+                    <option value="02">02 - Fevereiro</option>
+                    <option value="03">03 - Março</option>
+                    <option value="04">04 - Abril</option>
+                    <option value="05">05 - Maio</option>
+                    <option value="06">06 - Junho</option>
+                    <option value="07">07 - Julho</option>
+                    <option value="08">08 - Agosto</option>
+                    <option value="09">09 - Setembro</option>
+                    <option value="10">10 - Outubro</option>
+                    <option value="11">11 - Novembro</option>
+                    <option value="12">12 - Dezembro</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🏢 Filtrar por Lojista</label>
+                  <select 
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white outline-none font-bold text-sm" 
+                    value={filtroLojaCaixa} 
+                    onChange={e => setFiltroLojaCaixa(e.target.value)}
+                  >
+                    <option value="TODAS">Todas as Lojas</option>
+                    {lojasDoMedidor.map(opt => <option key={opt.id} value={opt.id.toString()}>{opt.nome}</option>)}
+                  </select>
+                </div>
               </div>
 
                <TabelaCaixaMedidor medidorHistorico={medidorHistorico} formatarMoeda={formatarMoeda} formatarData={formatarData} calcularSLA={calcularSLA} />
@@ -2221,17 +2364,48 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
       {/* --- VISÃO EXCLUSIVA DA LOJA --- */}
       {perfil === 'LOJA' && (
         <>
-          <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl mb-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Mês de Emissão</label>
-              <select className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white outline-none focus:border-blue-500 appearance-none font-bold text-sm" value={filtroMes} onChange={e => setFiltroMes(e.target.value)}>
-                <option value="TODOS">Todos os Meses</option>
-                {mesesDisponiveis.map(m => <option key={m} value={m}>{formatarMesAno(m)}</option>)}
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🗓️ Ano</label>
+              <select 
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white outline-none focus:border-blue-500 font-bold text-sm" 
+                value={filtroAnoLoja} 
+                onChange={e => setFiltroAnoLoja(e.target.value)}
+              >
+                <option value="TODOS">Todos os Anos</option>
+                <option value="2026">Ano 2026</option>
+                <option value="2025">Ano 2025</option>
               </select>
             </div>
             <div>
-              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Filtrar por Medidor</label>
-              <select className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white outline-none focus:border-blue-500 appearance-none font-bold text-sm" value={filtroSecundario} onChange={e => setFiltroSecundario(e.target.value)}>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">📅 Mês de Emissão</label>
+              <select 
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-blue-400 outline-none focus:border-blue-500 font-bold text-sm" 
+                value={filtroMesLoja} 
+                onChange={e => setFiltroMesLoja(e.target.value)}
+              >
+                <option value="TODOS">Todos os Meses</option>
+                <option value="01">01 - Janeiro</option>
+                <option value="02">02 - Fevereiro</option>
+                <option value="03">03 - Março</option>
+                <option value="04">04 - Abril</option>
+                <option value="05">05 - Maio</option>
+                <option value="06">06 - Junho</option>
+                <option value="07">07 - Julho</option>
+                <option value="08">08 - Agosto</option>
+                <option value="09">09 - Setembro</option>
+                <option value="10">10 - Outubro</option>
+                <option value="11">11 - Novembro</option>
+                <option value="12">12 - Dezembro</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">👷 Filtrar por Medidor</label>
+              <select 
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white outline-none focus:border-blue-500 font-bold text-sm" 
+                value={filtroSecundario} 
+                onChange={e => setFiltroSecundario(e.target.value)}
+              >
                 <option value="TODOS">Todos os Medidores</option>
                 {secundarioOpcoesLoja.map(opt => <option key={opt.id} value={opt.id.toString()}>{opt.nome}</option>)}
               </select>

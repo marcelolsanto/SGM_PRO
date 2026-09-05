@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"math"
 	"time"
 
 	"workspace/backend/config"
@@ -24,8 +25,125 @@ func getPerfilERefID(c *fiber.Ctx) (string, uint) {
 	return perfil, refID
 }
 
+type MesEstatistica struct {
+	Mes                string  `json:"mes"`
+	TotalOS            int64   `json:"total_os"`
+	FaturamentoLojas   float64 `json:"faturamento_lojas"`
+	RepasseMedidores   float64 `json:"repasse_medidores"`
+	LucroSGM           float64 `json:"lucro_sgm"`
+	CustoCLT           float64 `json:"custo_clt"`
+	EconomiaLoja       float64 `json:"economia_loja"`
+	PercentualEconomia float64 `json:"percentual_economia"`
+}
+
+type EstatisticasAnuaisResponse struct {
+	Ano                string           `json:"ano"`
+	TotalOS            int64            `json:"total_os"`
+	FaturamentoLojas   float64          `json:"faturamento_total_lojas"`
+	RepasseMedidores   float64          `json:"faturamento_medidores"`
+	LucroSGM           float64          `json:"lucro_sgm"`
+	CustoCLTEstimado   float64          `json:"custo_clt_estimado"`
+	EconomiaGerada     float64          `json:"economia_gerada"`
+	PercentualEconomia float64          `json:"percentual_economia"`
+	Meses              []MesEstatistica `json:"meses"`
+}
+
+func ObterEstatisticasAnuais(c *fiber.Ctx) error {
+	perfil, refID := getPerfilERefID(c)
+	ano := c.Query("ano", "2026")
+	if ano == "" || ano == "TODOS" {
+		ano = "2026"
+	}
+
+	tInicio, err := time.Parse("2006", ano)
+	if err != nil {
+		tInicio = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	}
+	tFim := tInicio.AddDate(1, 0, 0)
+
+	type QueryRow struct {
+		Mes              string  `gorm:"column:mes"`
+		TotalOS          int64   `gorm:"column:total_os"`
+		FaturamentoLojas float64 `gorm:"column:faturamento_lojas"`
+		RepasseMedidores float64 `gorm:"column:repasse_medidores"`
+	}
+
+	var rows []QueryRow
+	q := config.DB.Table("ordem_servicos").
+		Select("TO_CHAR(DATE_TRUNC('month', criado_em), 'YYYY-MM') AS mes, COUNT(*) AS total_os, COALESCE(SUM(valor_total_os), 0) AS faturamento_lojas, COALESCE(SUM(custo_medidor), 0) AS repasse_medidores").
+		Where("criado_em >= ? AND criado_em < ?", tInicio, tFim)
+
+	if perfil == "LOJA" {
+		q = q.Where("loja_id = ?", refID)
+	} else if perfil == "MEDIDOR" {
+		q = q.Where("medidor_id = ?", refID)
+	}
+
+	if err := q.Group("DATE_TRUNC('month', criado_em)").Order("mes ASC").Scan(&rows).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"erro": "Falha ao calcular estatísticas anuais", "detalhes": err.Error()})
+	}
+
+	var meses []MesEstatistica
+	var totalOS int64
+	var faturamentoTotal, repasseTotal float64
+
+	for _, r := range rows {
+		lucro := r.FaturamentoLojas - r.RepasseMedidores
+		custoCLT := float64(r.TotalOS) * 580.0
+		economia := custoCLT - r.FaturamentoLojas
+		if economia < 0 {
+			economia = 0
+		}
+		pctEconomia := 0.0
+		if custoCLT > 0 {
+			pctEconomia = math.Round((economia/custoCLT)*1000) / 10
+		}
+
+		meses = append(meses, MesEstatistica{
+			Mes:                r.Mes,
+			TotalOS:            r.TotalOS,
+			FaturamentoLojas:   math.Round(r.FaturamentoLojas*100) / 100,
+			RepasseMedidores:   math.Round(r.RepasseMedidores*100) / 100,
+			LucroSGM:           math.Round(lucro*100) / 100,
+			CustoCLT:           math.Round(custoCLT*100) / 100,
+			EconomiaLoja:       math.Round(economia*100) / 100,
+			PercentualEconomia: pctEconomia,
+		})
+
+		totalOS += r.TotalOS
+		faturamentoTotal += r.FaturamentoLojas
+		repasseTotal += r.RepasseMedidores
+	}
+
+	lucroTotal := faturamentoTotal - repasseTotal
+	custoCLTTotal := float64(totalOS) * 580.0
+	economiaTotal := custoCLTTotal - faturamentoTotal
+	if economiaTotal < 0 {
+		economiaTotal = 0
+	}
+	pctTotal := 0.0
+	if custoCLTTotal > 0 {
+		pctTotal = math.Round((economiaTotal/custoCLTTotal)*1000) / 10
+	}
+
+	resp := EstatisticasAnuaisResponse{
+		Ano:                ano,
+		TotalOS:            totalOS,
+		FaturamentoLojas:   math.Round(faturamentoTotal*100) / 100,
+		RepasseMedidores:   math.Round(repasseTotal*100) / 100,
+		LucroSGM:           math.Round(lucroTotal*100) / 100,
+		CustoCLTEstimado:   math.Round(custoCLTTotal*100) / 100,
+		EconomiaGerada:     math.Round(economiaTotal*100) / 100,
+		PercentualEconomia: pctTotal,
+		Meses:              meses,
+	}
+
+	return c.Status(200).JSON(resp)
+}
+
 func ListarOrdens(c *fiber.Ctx) error {
 	perfil, refID := getPerfilERefID(c)
+	ano := c.Query("ano")
 	mes := c.Query("mes")
 	statusFiltro := c.Query("status")
 	limit := c.QueryInt("limit", 0)
@@ -36,12 +154,26 @@ func ListarOrdens(c *fiber.Ctx) error {
 		Preload("Ambientes").
 		Preload("Briefing")
 
-	if mes != "" && mes != "TODOS" {
+	if ano != "" && ano != "TODOS" && mes != "" && mes != "TODOS" {
+		mesPad := mes
+		if len(mes) == 2 {
+			mesPad = ano + "-" + mes
+		}
+		if tInicio, err := time.Parse("2006-01", mesPad); err == nil {
+			tFim := tInicio.AddDate(0, 1, 0)
+			query = query.Where("criado_em >= ? AND criado_em < ?", tInicio, tFim)
+		}
+	} else if ano != "" && ano != "TODOS" {
+		if tInicio, err := time.Parse("2006", ano); err == nil {
+			tFim := tInicio.AddDate(1, 0, 0)
+			query = query.Where("criado_em >= ? AND criado_em < ?", tInicio, tFim)
+		}
+	} else if mes != "" && mes != "TODOS" {
 		if tInicio, err := time.Parse("2006-01", mes); err == nil {
 			tFim := tInicio.AddDate(0, 1, 0)
 			query = query.Where("criado_em >= ? AND criado_em < ?", tInicio, tFim)
 		} else {
-			query = query.Where("TO_CHAR(criado_em, 'YYYY-MM') = ?", mes)
+			query = query.Where("TO_CHAR(criado_em, 'MM') = ? OR TO_CHAR(criado_em, 'YYYY-MM') = ?", mes, mes)
 		}
 	}
 	if statusFiltro != "" && statusFiltro != "TODOS" {
@@ -95,7 +227,7 @@ func ListarOrdens(c *fiber.Ctx) error {
 	qAdmin := query.Order("criado_em DESC")
 	if limit > 0 {
 		qAdmin = qAdmin.Limit(limit)
-	} else if mes == "" {
+	} else {
 		qAdmin = qAdmin.Limit(250)
 	}
 	qAdmin.Find(&ordens)
