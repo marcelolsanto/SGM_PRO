@@ -1,0 +1,57 @@
+# ==========================================
+# SGM.PRO - .gitignore
+# ==========================================
+
+# 1. Variáveis de Ambiente e Credenciais (NUNCA SUBIR)
+.env
+.env.*
+!.env.example
+*.env
+
+# 2. Dependências
+node_modules/
+vendor/
+
+# 3. Builds e Distribuição (Frontend & Backend)
+dist/
+build/
+.vite/
+tmp/
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+build-errors.log
+
+# 4. Uploads de Clientes e Obras (Mantendo a pasta via .gitkeep)
+/BACKEND/uploads/*
+!/BACKEND/uploads/.gitkeep
+uploads/*
+!uploads/.gitkeep
+
+# 5. Backups Locais e Arquivos de Mídia Pesados
+backup_*.txt
+*.mp4
+*.mov
+*.avi
+*.wmv
+*.zip
+*.tar.gz
+
+# 6. Arquivos Temporários de Sistema Operacional e Editores
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*~

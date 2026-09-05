@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  app:
+    build: . # Diz ao Docker para ler o Dockerfile que criamos acima
+    container_name: sgm_app
+    volumes:
+      - .:/workspace # Espelha a pasta do seu Windows para dentro do container
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Permite que o Go acesse o seu Postgres local
+    ports:
+      - "8080:8080" # Porta do Backend (Go)
+      - "5173:5173" # Porta do Frontend (Vite/React)
+    command: sleep infinity # Mantém o container ligado rodando em segundo plano
