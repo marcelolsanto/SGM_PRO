@@ -32,12 +32,12 @@ jobs:
             fi
           fi
 
-          echo "🐳 Atualizando e recriando containers Docker..."
-          docker compose down -t 2 || true
-          docker compose up -d --build --force-recreate
+          echo "🐳 Atualizando e subindo containers Docker..."
+          docker compose up -d db
+          docker compose up -d --build --force-recreate app
 
           echo "⏳ Aguardando estabilização dos serviços..."
-          sleep 12
+          sleep 10
           docker compose ps
 
           echo "========================================="
