@@ -9,6 +9,21 @@ import PortalUsuario from './views/PortalUsuario'
 import ResetarSenha from './views/ResetarSenha'
 import TermosModal from './components/TermosModal'
 
+// Configuração imediata do token para evitar 401 nas primeiras chamadas dos componentes filhos
+const tokenSalvo = typeof window !== 'undefined' ? localStorage.getItem('sgm_token') : null
+if (tokenSalvo) {
+  axios.defaults.headers.common['Authorization'] = `Bearer ${tokenSalvo}`
+}
+
+axios.interceptors.request.use((config) => {
+  const t = typeof window !== 'undefined' ? localStorage.getItem('sgm_token') : null
+  if (t) {
+    config.headers = config.headers || {}
+    config.headers['Authorization'] = `Bearer ${t}`
+  }
+  return config
+})
+
 function App() {
   const [token, setToken] = useState(localStorage.getItem('sgm_token') || null)
   const [usuario, setUsuario] = useState(localStorage.getItem('sgm_usuario') || '')

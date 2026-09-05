@@ -135,8 +135,8 @@ export default function Operacoes() {
             <div className="bg-blue-950/20 border border-blue-900/30 p-4 md:p-5 rounded-2xl mb-6">
               <p className="font-bold text-white text-sm mb-3">Visão Geral da Obra</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-3">
-                <div><span className="text-slate-500 block mb-1">Chaves Liberadas:</span> <strong className="text-slate-200">{geral.possui_chave}</strong></div>
-                <div><span className="text-slate-500 block mb-1">Revestimentos:</span> <strong className="text-slate-200">{geral.revestimento_pronto}</strong></div>
+                <div><span className="text-slate-500 block mb-1">Chaves Liberadas:</span> <strong className="text-slate-200">{String(geral.possui_chave || '-')}</strong></div>
+                <div><span className="text-slate-500 block mb-1">Revestimentos:</span> <strong className="text-slate-200">{String(geral.revestimento_pronto || '-')}</strong></div>
               </div>
             </div>
           )}

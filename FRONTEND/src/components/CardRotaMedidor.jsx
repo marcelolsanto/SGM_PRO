@@ -6,21 +6,94 @@ export default function CardRotaMedidor({ os, formatarMoeda, marcarChegada, entr
   const [observacoesTexto, setObservacoesTexto] = useState('');
   const [uploading, setUploading] = useState(false);
 
-  // 🔥 Função que transforma o JSON do banco numa lista bonita 🔥
+  // 🔥 Função que transforma o JSON do banco numa lista bonita e segura 🔥
   const renderBriefing = (jsonStr) => {
     if (!jsonStr) return <p className="text-slate-500 italic">Briefing vazio.</p>;
     try {
-      const dados = JSON.parse(jsonStr);
-      return (
-        <ul className="list-disc pl-4 space-y-1">
-          {Object.entries(dados).map(([k, v]) => (
-            <li key={k} className="text-slate-300">
-              <strong className="capitalize text-slate-400">{k.replace(/_/g, ' ')}:</strong> {v === true ? 'Sim' : v === false ? 'Não' : v}
+      const dados = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+      if (!dados || typeof dados !== 'object') return <p className="text-slate-400 text-xs">{String(dados)}</p>;
+
+      const elementos = [];
+
+      // 1. Dados gerais do agendamento e obra
+      if (dados.geral && typeof dados.geral === 'object') {
+        const g = dados.geral;
+        if (g.data_agendada) {
+          const partes = String(g.data_agendada).split('-');
+          const dataFmt = partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : g.data_agendada;
+          elementos.push(
+            <li key="data_agendada" className="text-emerald-400 font-bold">
+              📅 Agendado: {dataFmt} {g.hora_agendada ? `às ${g.hora_agendada}` : ''}
             </li>
-          ))}
-        </ul>
-      );
-    } catch (e) { return <p>{jsonStr}</p>; }
+          );
+        }
+        if (g.possui_chave !== undefined && g.possui_chave !== '') {
+          elementos.push(
+            <li key="chave" className="text-slate-300">
+              <strong className="text-slate-400">Chaves na Obra:</strong> {String(g.possui_chave)}
+            </li>
+          );
+        }
+        if (g.revestimento_pronto !== undefined && g.revestimento_pronto !== '') {
+          elementos.push(
+            <li key="revestimento" className="text-slate-300">
+              <strong className="text-slate-400">Piso/Revestimento:</strong> {String(g.revestimento_pronto)}
+            </li>
+          );
+        }
+      }
+
+      // 2. Ambientes e eletrodomésticos/equipamentos informados
+      if (dados.ambientes && typeof dados.ambientes === 'object') {
+        const mapLabels = {
+          geladeira: 'Geladeira', fogao: 'Fogão/Cooktop', forno: 'Forno',
+          microondas: 'Micro-ondas', coifa: 'Coifa', lavaloucas: 'Lava-louças',
+          purificador: 'Filtro', cama: 'Cama', tv: 'TV', ar_condicionado: 'Ar Cond.',
+          sofa: 'Sofá', cuba: 'Cuba', vaso: 'Vaso Sanitário', chuveiro: 'Chuveiro', mesa: 'Mesa'
+        };
+
+        Object.entries(dados.ambientes).forEach(([ambId, ambData]) => {
+          if (!ambData || typeof ambData !== 'object') return;
+          const itens = ambData.itens || {};
+          const itensAtivos = Object.entries(itens)
+            .filter(([, it]) => it && it.ativo)
+            .map(([tipo, it]) => `${mapLabels[tipo] || tipo}${it.modelo ? ` (${it.modelo})` : ''}`);
+
+          if (itensAtivos.length > 0) {
+            elementos.push(
+              <li key={`amb-${ambId}`} className="text-slate-300">
+                <strong className="text-blue-400">Itens ({ambData.nome || 'Ambiente'}):</strong> {itensAtivos.join(', ')}
+              </li>
+            );
+          }
+        });
+      }
+
+      // 3. Demais chaves primitivas (caso existam em outros formatos)
+      Object.entries(dados).forEach(([k, v]) => {
+        if (k === 'geral' || k === 'ambientes') return;
+        if (v === null || v === undefined) return;
+
+        let texto = '';
+        if (typeof v === 'boolean') texto = v ? 'Sim' : 'Não';
+        else if (typeof v === 'object') texto = JSON.stringify(v);
+        else texto = String(v);
+
+        elementos.push(
+          <li key={k} className="text-slate-300">
+            <strong className="capitalize text-slate-400">{k.replace(/_/g, ' ')}:</strong> {texto}
+          </li>
+        );
+      });
+
+      if (elementos.length === 0) {
+        return <p className="text-slate-500 italic">Briefing preenchido. Sem itens adicionais.</p>;
+      }
+
+      return <ul className="list-disc pl-4 space-y-1">{elementos}</ul>;
+    } catch (e) {
+      return <p className="text-slate-400 text-xs">{typeof jsonStr === 'string' ? jsonStr : JSON.stringify(jsonStr)}</p>;
+    }
   };
 
   const handleUpload = async (e) => {
