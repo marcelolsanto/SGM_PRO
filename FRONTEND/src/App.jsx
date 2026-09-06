@@ -4,6 +4,7 @@ import Dashboard from './views/Dashboard'
 import Operacoes from './views/Operacoes'
 import TorreControle from './views/TorreControle'
 import Admin from './views/Admin'
+import PainelFinanceiro from './views/PainelFinanceiro'
 import MagicLink from './views/MagicLink'
 import Login from './views/Login'
 import PortalUsuario from './views/PortalUsuario'
@@ -59,6 +60,7 @@ function App() {
     { id: 'dashboard', icon: '📊', label: 'Visão Geral (BI)' },
     { id: 'campo', icon: '🗺️', label: 'Torre de Controle (Campo)' },
     { id: 'operacoes', icon: '🛠️', label: 'Gestão de Operações' },
+    { id: 'financeiro', icon: '🏦', label: 'Financeiro & Contábil' },
     { id: 'admin', icon: '⚙️', label: 'Cadastros Base' },
     { id: 'institucional', icon: '🌐', label: 'Site Institucional' }
   ]
@@ -129,6 +131,7 @@ function App() {
           {perfil === 'ADMIN' && abaAtiva === 'dashboard' && <Dashboard perfil={perfil} />}
           {abaAtiva === 'campo' && <TorreControle perfil={perfil} setToken={setToken} />}
           {perfil === 'ADMIN' && abaAtiva === 'operacoes' && <Operacoes />}
+          {perfil === 'ADMIN' && abaAtiva === 'financeiro' && <PainelFinanceiro onVoltar={() => setAbaAtiva('dashboard')} />}
           {perfil === 'ADMIN' && abaAtiva === 'admin' && <Admin perfil={perfil} refId={refId} />}
 
           {perfil === 'LOJA' && abaAtiva === 'dashboard' && <Dashboard perfil={perfil} />}

@@ -46,4 +46,5 @@ func Setup(app *fiber.App) {
 	RegisterMedidorRoutes(apiProtegida)
 	RegisterAmbienteRoutes(apiProtegida)
 	RegisterRotasRoutes(apiProtegida)
+	RegisterFinanceiroRoutes(apiProtegida)
 }
