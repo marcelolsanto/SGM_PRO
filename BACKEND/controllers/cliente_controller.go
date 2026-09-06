@@ -9,6 +9,7 @@ import (
 
 func CriarCliente(c *fiber.Ctx) error {
 	perfil, refID := getPerfilERefID(c)
+	redeID := getRedeID(c)
 
 	var cl models.Cliente
 	if err := c.BodyParser(&cl); err != nil {
@@ -17,6 +18,11 @@ func CriarCliente(c *fiber.Ctx) error {
 
 	if perfil == "LOJA" {
 		cl.LojaID = refID
+		if redeID > 0 {
+			cl.RedeID = &redeID
+		}
+	} else if perfil == "MEDIDOR" {
+		cl.MedidorOrigemID = &refID
 	}
 
 	if err := config.DB.Create(&cl).Error; err != nil {
@@ -28,12 +34,19 @@ func CriarCliente(c *fiber.Ctx) error {
 
 func ListarClientes(c *fiber.Ctx) error {
 	perfil, refID := getPerfilERefID(c)
+	redeID := getRedeID(c)
 
 	var lista []models.Cliente
 	if perfil == "LOJA" {
-		config.DB.Where("loja_id = ?", refID).Find(&lista)
+		if redeID > 0 {
+			config.DB.Where("rede_id = ? OR loja_id = ?", redeID, refID).Order("nome ASC").Find(&lista)
+		} else {
+			config.DB.Where("loja_id = ?", refID).Order("nome ASC").Find(&lista)
+		}
+	} else if perfil == "MEDIDOR" {
+		config.DB.Where("medidor_origem_id = ?", refID).Order("nome ASC").Find(&lista)
 	} else {
-		config.DB.Find(&lista)
+		config.DB.Order("nome ASC").Find(&lista)
 	}
 
 	return c.Status(200).JSON(lista)
@@ -41,6 +54,7 @@ func ListarClientes(c *fiber.Ctx) error {
 
 func ObterCliente(c *fiber.Ctx) error {
 	perfil, refID := getPerfilERefID(c)
+	redeID := getRedeID(c)
 	id := c.Params("id")
 
 	var cl models.Cliente
@@ -49,7 +63,9 @@ func ObterCliente(c *fiber.Ctx) error {
 	}
 
 	if perfil == "LOJA" && cl.LojaID != refID {
-		return c.Status(403).JSON(fiber.Map{"erro": "Acesso negado"})
+		if redeID == 0 || cl.RedeID == nil || *cl.RedeID != redeID {
+			return c.Status(403).JSON(fiber.Map{"erro": "Acesso negado"})
+		}
 	}
 
 	return c.JSON(cl)
@@ -57,6 +73,7 @@ func ObterCliente(c *fiber.Ctx) error {
 
 func AtualizarCliente(c *fiber.Ctx) error {
 	perfil, refID := getPerfilERefID(c)
+	redeID := getRedeID(c)
 	id := c.Params("id")
 
 	var cl models.Cliente
@@ -65,7 +82,9 @@ func AtualizarCliente(c *fiber.Ctx) error {
 	}
 
 	if perfil == "LOJA" && cl.LojaID != refID {
-		return c.Status(403).JSON(fiber.Map{"erro": "Acesso negado"})
+		if redeID == 0 || cl.RedeID == nil || *cl.RedeID != redeID {
+			return c.Status(403).JSON(fiber.Map{"erro": "Acesso negado"})
+		}
 	}
 
 	var input models.Cliente
@@ -83,6 +102,7 @@ func AtualizarCliente(c *fiber.Ctx) error {
 
 func DeletarCliente(c *fiber.Ctx) error {
 	perfil, refID := getPerfilERefID(c)
+	redeID := getRedeID(c)
 	id := c.Params("id")
 
 	var cl models.Cliente
@@ -91,7 +111,9 @@ func DeletarCliente(c *fiber.Ctx) error {
 	}
 
 	if perfil == "LOJA" && cl.LojaID != refID {
-		return c.Status(403).JSON(fiber.Map{"erro": "Acesso negado"})
+		if redeID == 0 || cl.RedeID == nil || *cl.RedeID != redeID {
+			return c.Status(403).JSON(fiber.Map{"erro": "Acesso negado"})
+		}
 	}
 
 	if err := config.DB.Delete(&cl).Error; err != nil {

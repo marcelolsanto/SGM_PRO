@@ -8,11 +8,24 @@ import (
 )
 
 func ListarLojas(c *fiber.Ctx) error {
-	perfil := c.Locals("perfil").(string)
-	refID := uint(c.Locals("ref_id").(float64))
+	perfil := ""
+	if p, ok := c.Locals("perfil").(string); ok {
+		perfil = p
+	}
+	var refID uint
+	if r, ok := c.Locals("ref_id").(float64); ok {
+		refID = uint(r)
+	} else if r, ok := c.Locals("ref_id").(uint); ok {
+		refID = r
+	}
+	var redeID uint
+	if rd, ok := c.Locals("rede_id").(float64); ok {
+		redeID = uint(rd)
+	} else if rd, ok := c.Locals("rede_id").(uint); ok {
+		redeID = rd
+	}
 
-	// 🔥 COMUNICAÇÃO: O Controller pede para o Service buscar os dados
-	lojas, err := services.ObterLojas(perfil, refID)
+	lojas, err := services.ObterLojas(perfil, refID, redeID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"erro": "Falha ao buscar as lojas no banco"})
 	}

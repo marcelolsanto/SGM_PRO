@@ -3,6 +3,7 @@ import axios from 'axios'
 import Dashboard from './views/Dashboard'
 import Operacoes from './views/Operacoes'
 import Admin from './views/Admin'
+import PainelFinanceiro from './views/PainelFinanceiro'
 import MagicLink from './views/MagicLink'
 import Login from './views/Login'
 import PortalUsuario from './views/PortalUsuario'
@@ -62,6 +63,7 @@ function App() {
   const menuAdmin = [
     { id: 'dashboard', icon: '📊', label: 'Visão Geral (BI)' },
     { id: 'operacoes', icon: '🛠️', label: 'Gestão de Operações' },
+    { id: 'financeiro', icon: '🏦', label: 'Financeiro & Contábil' },
     { id: 'admin', icon: '⚙️', label: 'Cadastros Base' }
   ]
   
@@ -126,6 +128,7 @@ function App() {
         <div className="max-w-7xl mx-auto pb-20 md:pb-0 h-full">
           {perfil === 'ADMIN' && abaAtiva === 'dashboard' && <Dashboard perfil={perfil} />}
           {perfil === 'ADMIN' && abaAtiva === 'operacoes' && <Operacoes />}
+          {perfil === 'ADMIN' && abaAtiva === 'financeiro' && <PainelFinanceiro onVoltar={() => setAbaAtiva('dashboard')} />}
           {perfil === 'ADMIN' && abaAtiva === 'admin' && <Admin perfil={perfil} refId={refId} />}
 
           {perfil === 'LOJA' && abaAtiva === 'dashboard' && <Dashboard perfil={perfil} />}

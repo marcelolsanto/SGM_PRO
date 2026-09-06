@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from 'react'
 import axios from 'axios'
 import NovaOsModal from '../components/NovaOsModal'
 import ModalPagamentoPix from '../components/ModalPagamentoPix'
+import ModalFechamentoMedidor from '../components/ModalFechamentoMedidor'
+import SeletorRedeLoja from '../components/SeletorRedeLoja'
 
 import TabelaCaixaMedidor from '../components/TabelaCaixaMedidor'
 import CardDemandaMedidor from '../components/CardDemandaMedidor'
@@ -1038,6 +1040,7 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
 
   const [filtroMes, setFiltroMes] = useState(mesAtualStr)
   const [filtroSecundario, setFiltroSecundario] = useState('TODOS')
+  const [lojaSelecionada, setLojaSelecionada] = useState('TODAS')
   const [linkCopiado, setLinkCopiado] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [osParaEditar, setOsParaEditar] = useState(null)
@@ -1046,14 +1049,27 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
   const [osParaRastrear, setOsParaRastrear] = useState(null)
   const [isAgendaOpen, setIsAgendaOpen] = useState(false)
   
-  const [lojas, setLojas] = useState([])
+  // Módulo de Fechamento de Lotes e Quitação (CLT Art. 442-B)
+  const [modalFechamentoAberto, setModalFechamentoAberto] = useState(false)
+  const [meusLotes, setMeusLotes] = useState([])
+
+  const carregarMeusLotes = () => {
+    if (perfil === 'MEDIDOR') {
+      axios.get('/api/fechamentos').then(res => setMeusLotes(res.data || [])).catch(() => {})
+    }
+  }
   const [clientes, setClientes] = useState([])
   const [medidores, setMedidores] = useState([])
 
   const fazerLogout = () => { localStorage.removeItem('sgm_token'); localStorage.removeItem('sgm_usuario'); if (setToken) setToken(null); window.location.href = '/' }
 
-  const carregarOrdens = () => {
-    setLoading(true); axios.get('/api/os').then(res => { setTodasOrdens(res.data || []); setLoading(false) }).catch(() => setLoading(false))
+  const carregarOrdens = (lojaIdFiltro = lojaSelecionada) => {
+    setLoading(true);
+    const params = {};
+    if (lojaIdFiltro && lojaIdFiltro !== 'TODAS') {
+      params.loja_id = lojaIdFiltro;
+    }
+    axios.get('/api/os', { params }).then(res => { setTodasOrdens(res.data || []); setLoading(false) }).catch(() => setLoading(false))
   }
 
   const carregarCadastros = async () => {
@@ -1063,13 +1079,17 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
         axios.get('/api/clientes'),
         axios.get('/api/medidores')
       ])
-      setLojas(perfil === 'LOJA' ? resLojas.data.filter(l => l.id === refId) : resLojas.data)
-      setClientes(resClientes.data)
-      setMedidores(resMedidores.data)
+      setLojas(resLojas.data || [])
+      setClientes(resClientes.data || [])
+      setMedidores(resMedidores.data || [])
     } catch (error) { console.error("Erro ao carregar cadastros") }
   }
 
-  useEffect(() => { carregarOrdens(); carregarCadastros() }, [perfil, refId])
+  useEffect(() => { 
+    carregarOrdens(lojaSelecionada); 
+    carregarCadastros();
+    carregarMeusLotes();
+  }, [perfil, refId])
 
   // Rastreamento contínuo em segundo plano da localização do Medidor
   useEffect(() => {
@@ -1248,9 +1268,19 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
           </button>
         </div>
         {perfil === 'LOJA' && (
-          <button onClick={() => {setOsParaEditar(null); setIsModalOpen(true)}} className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-lg shadow-blue-900/20">
-            <span className="text-xl mr-2">+</span> Nova OS
-          </button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <SeletorRedeLoja
+              lojaSelecionada={lojaSelecionada}
+              onSelecionarLoja={(id) => {
+                setLojaSelecionada(id)
+                carregarOrdens(id)
+              }}
+              lojasProp={lojas}
+            />
+            <button onClick={() => {setOsParaEditar(null); setIsModalOpen(true)}} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-lg shadow-blue-900/20 whitespace-nowrap">
+              <span className="text-xl mr-2">+</span> Nova OS
+            </button>
+          </div>
         )}
       </header>
 
@@ -1328,18 +1358,108 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
           )}
 
           {abaMedidor === 'historico' && (
-            <div className="animate-slide-in-right">
-              <div className="mb-6 grid grid-cols-2 gap-4">
-                <div className="bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-xl"><p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Saldo Faturado</p><p className="text-2xl md:text-3xl font-black text-emerald-400 mt-1">{formatarMoeda(ganhosTotaisMedidor)}</p></div>
-                <div className="bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-xl"><p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Projetos Entregues</p><p className="text-2xl md:text-3xl font-black text-blue-400 mt-1">{medidorHistorico.length}</p></div>
+            <div className="animate-slide-in-right space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-xl">
+                  <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Saldo Faturado (Total)</p>
+                  <p className="text-2xl md:text-3xl font-black text-emerald-400 mt-1">{formatarMoeda(ganhosTotaisMedidor)}</p>
+                </div>
+                <div className="bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-xl">
+                  <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Projetos Entregues</p>
+                  <p className="text-2xl md:text-3xl font-black text-blue-400 mt-1">{medidorHistorico.length} OS</p>
+                </div>
+                <div className="bg-blue-950/20 border border-blue-500/30 p-5 rounded-3xl shadow-xl flex flex-col justify-between">
+                  <div>
+                    <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest">Fechamento & Liquidação</p>
+                    <p className="text-xs text-slate-300 mt-1">Conferência de planilha e pagamento via PIX</p>
+                  </div>
+                  <button
+                    onClick={() => setModalFechamentoAberto(true)}
+                    className="mt-3 w-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs py-2.5 px-4 rounded-2xl shadow-lg shadow-blue-900/30 transition-all flex items-center justify-center gap-2"
+                  >
+                    <span>📋</span> Solicitar Fechamento
+                  </button>
+                </div>
               </div>
+
+              {/* Meus Lotes Submetidos */}
+              {meusLotes.length > 0 && (
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-sm font-black text-white flex items-center gap-2">
+                      <span>🏦</span> Meus Lotes de Pagamento (Quitações & PIX)
+                    </h3>
+                    <span className="text-xs text-slate-500">{meusLotes.length} lote(s)</span>
+                  </div>
+
+                  <div className="overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                      <thead className="bg-slate-950/60 border-b border-slate-800 text-[10px] uppercase font-black tracking-wider text-slate-500">
+                        <tr>
+                          <th className="p-3">Protocolo</th>
+                          <th className="p-3">Período</th>
+                          <th className="p-3 text-center">OSs</th>
+                          <th className="p-3 text-right">Valor Líquido</th>
+                          <th className="p-3 text-center">Status</th>
+                          <th className="p-3 text-right">Comprovante / Quitação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/50">
+                        {meusLotes.map(l => (
+                          <tr key={l.id} className="hover:bg-slate-800/40 font-mono">
+                            <td className="p-3 font-bold text-white">{l.numero_lote}</td>
+                            <td className="p-3 text-slate-400 font-sans text-[11px]">
+                              {new Date(l.periodo_inicio).toLocaleDateString('pt-BR')} a {new Date(l.periodo_fim).toLocaleDateString('pt-BR')}
+                            </td>
+                            <td className="p-3 text-center font-bold text-slate-300">{l.quantidade_os}</td>
+                            <td className="p-3 text-right font-black text-emerald-400 text-sm">
+                              {formatarMoeda(l.valor_liquido)}
+                            </td>
+                            <td className="p-3 text-center font-sans">
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                l.status === 'PAGO' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                                l.status === 'APROVADO' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                                'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                              }`}>
+                                {l.status}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right space-x-2 font-sans">
+                              {l.url_comprovante_pix && (
+                                <a
+                                  href={l.url_comprovante_pix}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl border border-slate-700 transition-all inline-block"
+                                >
+                                  📎 Comprovante
+                                </a>
+                              )}
+                              {l.status === 'PAGO' && (
+                                <a
+                                  href={`/api/fechamentos/${l.id}/termo-quitacao`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="bg-blue-900/60 hover:bg-blue-800 text-blue-300 text-xs font-bold px-2.5 py-1.5 rounded-xl transition-all inline-block"
+                                >
+                                  📄 Quitação Plena
+                                </a>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
               
               <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div><label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Mês de Referência</label><select className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white outline-none" value={filtroMesCaixa} onChange={e => setFiltroMesCaixa(e.target.value)}><option value="TODOS">Todo o Histórico</option>{mesesDisponiveis.map(m => <option key={m} value={m}>{formatarMesAno(m)}</option>)}</select></div>
                 <div><label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Filtrar por Lojista</label><select className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 px-4 text-white outline-none" value={filtroLojaCaixa} onChange={e => setFiltroLojaCaixa(e.target.value)}><option value="TODAS">Todas as Lojas</option>{lojasDoMedidor.map(opt => <option key={opt.id} value={opt.id.toString()}>{opt.nome}</option>)}</select></div>
               </div>
 
-               <TabelaCaixaMedidor medidorHistorico={medidorHistorico} formatarMoeda={formatarMoeda} formatarData={formatarData} calcularSLA={calcularSLA} />
+              <TabelaCaixaMedidor medidorHistorico={medidorHistorico} formatarMoeda={formatarMoeda} formatarData={formatarData} calcularSLA={calcularSLA} />
             </div>
           )}
         </>
@@ -1531,6 +1651,17 @@ export default function PortalUsuario({ perfil, refId, setToken }) {
         onClose={() => setIsPixOpen(false)} 
         os={osParaPix} 
         onPagamentoConfirmado={() => { carregarOrdens() }} 
+      />
+
+      {/* MODAL DE FECHAMENTO DE MEDIÇÕES (CLT Art. 442-B) */}
+      <ModalFechamentoMedidor
+        isOpen={modalFechamentoAberto}
+        onClose={() => setModalFechamentoAberto(false)}
+        medidorId={refId}
+        onFechamentoCriado={() => {
+          carregarOrdens()
+          carregarMeusLotes()
+        }}
       />
 
       {/* MODAL DE RASTREIO DE MEDIDOR AO VIVO */}

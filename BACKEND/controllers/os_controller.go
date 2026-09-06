@@ -5,6 +5,7 @@ import (
 
 	"workspace/backend/config"
 	"workspace/backend/models"
+	"workspace/backend/services"
 	"workspace/backend/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -24,10 +25,23 @@ func getPerfilERefID(c *fiber.Ctx) (string, uint) {
 	return perfil, refID
 }
 
+func getRedeID(c *fiber.Ctx) uint {
+	var redeID uint
+	if rd, ok := c.Locals("rede_id").(float64); ok {
+		redeID = uint(rd)
+	} else if rd, ok := c.Locals("rede_id").(uint); ok {
+		redeID = rd
+	}
+	return redeID
+}
+
 func ListarOrdens(c *fiber.Ctx) error {
 	perfil, refID := getPerfilERefID(c)
+	redeID := getRedeID(c)
 	mes := c.Query("mes")
 	statusFiltro := c.Query("status")
+	lojaFiltro := c.Query("loja_id")
+	redeFiltro := c.Query("rede_id")
 	limit := c.QueryInt("limit", 0)
 
 	var ordens []models.OrdemServico
@@ -49,7 +63,20 @@ func ListarOrdens(c *fiber.Ctx) error {
 	}
 
 	if perfil == "LOJA" {
-		q := query.Where("loja_id = ?", refID).Order("criado_em DESC")
+		q := query.Order("criado_em DESC")
+		if redeID > 0 {
+			// Gestor de Rede com múltiplas lojas (12-16 filiais)
+			if lojaFiltro != "" && lojaFiltro != "TODAS" && lojaFiltro != "TODOS" {
+				q = q.Where("loja_id = ?", lojaFiltro)
+			} else {
+				// Todas as lojas da rede
+				q = q.Where("loja_id IN (SELECT id FROM lojas WHERE rede_id = ? OR id = ?)", redeID, refID)
+			}
+		} else {
+			// Loja individual
+			q = q.Where("loja_id = ?", refID)
+		}
+
 		if limit > 0 {
 			q = q.Limit(limit)
 		} else {
@@ -91,8 +118,14 @@ func ListarOrdens(c *fiber.Ctx) error {
 		return c.Status(200).JSON(osLiberadas)
 	}
 
-	// ADMIN vê tudo
+	// ADMIN vê tudo, mas pode filtrar por loja ou rede
 	qAdmin := query.Order("criado_em DESC")
+	if lojaFiltro != "" && lojaFiltro != "TODAS" && lojaFiltro != "TODOS" {
+		qAdmin = qAdmin.Where("loja_id = ?", lojaFiltro)
+	} else if redeFiltro != "" && redeFiltro != "TODAS" && redeFiltro != "TODOS" {
+		qAdmin = qAdmin.Where("loja_id IN (SELECT id FROM lojas WHERE rede_id = ?)", redeFiltro)
+	}
+
 	if limit > 0 {
 		qAdmin = qAdmin.Limit(limit)
 	} else if mes == "" {
@@ -110,6 +143,9 @@ func CriarOrdem(c *fiber.Ctx) error {
 
 	var loja models.Loja
 	config.DB.First(&loja, osData.LojaID)
+	if osData.RedeID == nil && loja.RedeID != nil {
+		osData.RedeID = loja.RedeID
+	}
 	endOrigem := loja.Endereco
 	if endOrigem == "" {
 		endOrigem = "Praça da Sé, São Paulo, SP"
@@ -328,7 +364,16 @@ func AtualizarStatus(c *fiber.Ctx) error {
 	}
 
 	os.Status = p.Status
+	if (os.Status == "CONCLUIDO" || os.Status == "CONCLUIDA") && os.DataConclusao == nil {
+		now := time.Now()
+		os.DataConclusao = &now
+	}
 	config.DB.Save(&os)
+
+	if os.Status == "CONCLUIDO" || os.Status == "CONCLUIDA" {
+		services.ProvisionarFinanceiroOS(&os)
+	}
+
 	return c.Status(200).JSON(os)
 }
 
@@ -466,6 +511,9 @@ func EntregarMedicao(c *fiber.Ctx) error {
 		os.DataConclusao = &now
 	}
 	config.DB.Save(&os)
+
+	// Provisão contábil e de repasse automática no Livro Caixa
+	services.ProvisionarFinanceiroOS(&os)
 
 	return c.Status(200).JSON(os)
 }

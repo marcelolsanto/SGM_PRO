@@ -5,6 +5,7 @@ import "time"
 type OrdemServico struct {
 	ID               uint       `gorm:"primaryKey" json:"id"`
 	LojaID           uint       `gorm:"column:loja_id" json:"loja_id"`
+	RedeID           *uint      `gorm:"column:rede_id;index" json:"rede_id"`
 	MedidorID        *uint      `gorm:"column:medidor_id" json:"medidor_id"`
 	ClienteNome      string     `gorm:"column:cliente_nome" json:"cliente_nome"`
 	EnderecoObra          string     `gorm:"column:endereco_obra" json:"endereco_obra"`
