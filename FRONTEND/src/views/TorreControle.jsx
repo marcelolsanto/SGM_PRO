@@ -2,42 +2,89 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import axios from 'axios'
 import PortalUsuario from './PortalUsuario'
 
-// Distância aproximada em KM
-function calcularDistanciaKm(lat1, lon1, lat2, lon2) {
-  if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
-  const R = 6371;
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLon = (lon2 - lon1) * (Math.PI / 180);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return parseFloat((R * c).toFixed(1));
+// Coordenadas centrais e zoom para os estados cobertos
+const COORDENADAS_ESTADOS = {
+  DF: { lat: -15.7942, lon: -47.8822, zoom: 11, nome: 'Distrito Federal' },
+  SP: { lat: -23.5505, lon: -46.6333, zoom: 10, nome: 'São Paulo' },
+  RJ: { lat: -22.9068, lon: -43.1729, zoom: 11, nome: 'Rio de Janeiro' },
+  MG: { lat: -19.9167, lon: -43.9345, zoom: 11, nome: 'Minas Gerais' },
+  PR: { lat: -25.4284, lon: -49.2733, zoom: 11, nome: 'Paraná' },
+  RS: { lat: -30.0346, lon: -51.2177, zoom: 11, nome: 'Rio Grande do Sul' },
+  GO: { lat: -16.6869, lon: -49.2648, zoom: 11, nome: 'Goiás' },
+  BA: { lat: -12.9777, lon: -38.5016, zoom: 11, nome: 'Bahia' },
+}
+
+// Extrai UF e Cidade de endereços textuais e coordenadas
+function extrairUfECidade(endereco, lat, lon) {
+  let uf = ''
+  let cidade = ''
+
+  if (endereco) {
+    // Tenta padrão: "..., Cidade - UF" ou "... - Cidade, UF"
+    const matchUf = endereco.match(/-\s*([A-Z]{2})(?:\s*$|\s*,)/i) || endereco.match(/,\s*([A-Z]{2})(?:\s*$)/i)
+    if (matchUf) uf = matchUf[1].toUpperCase()
+
+    const partes = endereco.split(',')
+    if (partes.length > 1) {
+      const parteFinal = partes[partes.length - 1]
+      const sub = parteFinal.split('-')
+      if (sub.length > 1) {
+        cidade = sub[0].trim()
+      } else {
+        cidade = parteFinal.trim()
+      }
+    }
+  }
+
+  // Fallback baseado em coordenadas geográficas
+  if (!uf && lat && lon) {
+    const nLat = Number(lat)
+    if (nLat > -16.2 && nLat < -15.4) { uf = 'DF'; cidade = cidade || 'Brasília'; }
+    else if (nLat > -24.2 && nLat < -22.0) { uf = 'SP'; cidade = cidade || 'São Paulo'; }
+    else if (nLat > -23.1 && nLat < -22.0) { uf = 'RJ'; cidade = cidade || 'Rio de Janeiro'; }
+    else if (nLat > -20.5 && nLat < -19.0) { uf = 'MG'; cidade = cidade || 'Belo Horizonte'; }
+    else if (nLat > -26.0 && nLat < -24.8) { uf = 'PR'; cidade = cidade || 'Curitiba'; }
+    else if (nLat > -30.5 && nLat < -29.5) { uf = 'RS'; cidade = cidade || 'Porto Alegre'; }
+    else if (nLat > -17.2 && nLat < -16.0) { uf = 'GO'; cidade = cidade || 'Goiânia'; }
+    else if (nLat > -13.5 && nLat < -12.2) { uf = 'BA'; cidade = cidade || 'Salvador'; }
+  }
+
+  if (!uf) uf = 'DF'
+  if (!cidade) cidade = uf === 'DF' ? 'Brasília' : 'Capital'
+
+  return { uf, cidade }
 }
 
 export default function TorreControle({ perfil, setToken }) {
-  // Modo: 'panorama' (Torre de Controle Global) ou 'simulacao' (Visão do Medidor)
   const [modo, setModo] = useState('panorama')
   const [medidorSimuladoId, setMedidorSimuladoId] = useState(null)
 
-  // Dados principais
+  // Dados brutos da API
   const [lojas, setLojas] = useState([])
   const [medidores, setMedidores] = useState([])
   const [ordens, setOrdens] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // Controles do Mapa
+  // FILTROS AVANÇADOS DO ADMINISTRADOR
+  const [filtroEstado, setFiltroEstado] = useState('TODOS')
+  const [filtroCidade, setFiltroCidade] = useState('TODAS')
+  const [filtroLoja, setFiltroLoja] = useState('TODAS')
+  const [filtroMedidor, setFiltroMedidor] = useState('TODOS')
+  const [filtroAno, setFiltroAno] = useState('TODOS')
+  const [filtroMes, setFiltroMes] = useState('TODOS')
+  const [filtroStatusOS, setFiltroStatusOS] = useState('TODOS') // 'TODOS', 'EM_ABERTO', 'EM_EXECUCAO', 'CONCLUIDO', 'CANCELADO'
+
+  // Controles de Visualização do Mapa
   const [tipoMapa, setTipoMapa] = useState('google_streets') // 'google_streets', 'google_sat', 'dark'
   const [mostrarLojas, setMostrarLojas] = useState(true)
   const [mostrarMedidores, setMostrarMedidores] = useState(true)
   const [mostrarDemandas, setMostrarDemandas] = useState(true)
+  const [mostrarFiltrosAvancados, setMostrarFiltrosAvancados] = useState(true)
 
-  // Filtros e Painel Lateral
+  // Drawer Lateral
   const [drawerAberto, setDrawerAberto] = useState(true)
   const [abaFeed, setAbaFeed] = useState('medidores') // 'medidores', 'demandas', 'lojas'
   const [buscaFeed, setBuscaFeed] = useState('')
-  const [filtroStatusMedidor, setFiltroStatusMedidor] = useState('TODOS')
 
   // Refs do Leaflet
   const mapContainerRef = useRef(null)
@@ -69,40 +116,121 @@ export default function TorreControle({ perfil, setToken }) {
 
   useEffect(() => {
     carregarDadosRede()
-    const interval = setInterval(carregarDadosRede, 30000) // auto-refresh a cada 30s
+    const interval = setInterval(carregarDadosRede, 30000)
     return () => clearInterval(interval)
   }, [])
 
-  // 2. Classificação de medidores (Livres vs Em Rota)
-  const medidoresComStatus = useMemo(() => {
-    return medidores.map(m => {
-      const osEmRota = ordens.find(o => o.medidor_id === m.id && o.status === 'EM_ROTA')
-      const totalOSConcluidas = ordens.filter(o => o.medidor_id === m.id && o.status === 'CONCLUIDO').length
+  // 2. Análise e extração dinâmica de listas para os Dropdowns
+  const { estadosDisponiveis, cidadesDisponiveis, anosDisponiveis } = useMemo(() => {
+    const estadosSet = new Set()
+    const cidadesSet = new Set()
+    const anosSet = new Set()
+
+    lojas.forEach(l => {
+      const { uf, cidade } = extrairUfECidade(l.endereco, l.latitude, l.longitude)
+      if (uf) estadosSet.add(uf)
+      if (cidade && (filtroEstado === 'TODOS' || uf === filtroEstado)) cidadesSet.add(cidade)
+    })
+
+    ordens.forEach(o => {
+      const { uf, cidade } = extrairUfECidade(o.endereco_obra, o.latitude_obra, o.longitude_obra)
+      if (uf) estadosSet.add(uf)
+      if (cidade && (filtroEstado === 'TODOS' || uf === filtroEstado)) cidadesSet.add(cidade)
+      if (o.criado_em) {
+        const ano = new Date(o.criado_em).getFullYear()
+        if (ano) anosSet.add(ano.toString())
+      }
+    })
+
+    return {
+      estadosDisponiveis: Array.from(estadosSet).sort(),
+      cidadesDisponiveis: Array.from(cidadesSet).sort(),
+      anosDisponiveis: Array.from(anosSet).sort().reverse()
+    }
+  }, [lojas, ordens, filtroEstado])
+
+  // Resetar cidade se o estado mudar
+  useEffect(() => {
+    setFiltroCidade('TODAS')
+  }, [filtroEstado])
+
+  // 3. Aplicação dos Filtros Multi-Dimensionais
+  const { lojasFiltradas, medidoresFiltrados, ordensFiltradas } = useMemo(() => {
+    // A. Filtro de Lojas
+    const lojasRes = lojas.filter(l => {
+      const { uf, cidade } = extrairUfECidade(l.endereco, l.latitude, l.longitude)
+      if (filtroEstado !== 'TODOS' && uf !== filtroEstado) return false
+      if (filtroCidade !== 'TODAS' && cidade !== filtroCidade) return false
+      if (filtroLoja !== 'TODAS' && l.id.toString() !== filtroLoja) return false
+      return true
+    })
+
+    // B. Filtro de Ordens de Serviço
+    const ordensRes = ordens.filter(o => {
+      const { uf, cidade } = extrairUfECidade(o.endereco_obra, o.latitude_obra, o.longitude_obra)
+      if (filtroEstado !== 'TODOS' && uf !== filtroEstado) return false
+      if (filtroCidade !== 'TODAS' && cidade !== filtroCidade) return false
+      if (filtroLoja !== 'TODAS' && o.loja_id.toString() !== filtroLoja) return false
+      if (filtroMedidor !== 'TODOS' && (!o.medidor_id || o.medidor_id.toString() !== filtroMedidor)) return false
+
+      if (o.criado_em) {
+        const d = new Date(o.criado_em)
+        if (filtroAno !== 'TODOS' && d.getFullYear().toString() !== filtroAno) return false
+        if (filtroMes !== 'TODOS') {
+          const mesStr = String(d.getMonth() + 1).padStart(2, '0')
+          if (mesStr !== filtroMes) return false
+        }
+      }
+
+      // Status da OS
+      if (filtroStatusOS === 'EM_ABERTO' && o.status !== 'PENDENTE_LOJA' && o.status !== 'PENDENTE') return false
+      if (filtroStatusOS === 'EM_EXECUCAO' && o.status !== 'EM_ROTA') return false
+      if (filtroStatusOS === 'CONCLUIDO' && o.status !== 'CONCLUIDO') return false
+      if (filtroStatusOS === 'CANCELADO' && o.status !== 'CANCELADO') return false
+
+      return true
+    })
+
+    // C. Filtro de Medidores
+    const medidoresRes = medidores.map(m => {
+      const osEmRota = ordensRes.find(o => o.medidor_id === m.id && o.status === 'EM_ROTA')
+      const totalOSConcluidas = ordensRes.filter(o => o.medidor_id === m.id && o.status === 'CONCLUIDO').length
+      const { uf, cidade } = extrairUfECidade(m.endereco, m.latitude, m.longitude)
       return {
         ...m,
+        uf,
+        cidade,
         statusCampo: osEmRota ? 'EM_ROTA' : 'LIVRE',
         osAtual: osEmRota || null,
         totalConcluidas: totalOSConcluidas
       }
+    }).filter(m => {
+      if (filtroMedidor !== 'TODOS' && m.id.toString() !== filtroMedidor) return false
+      if (filtroEstado !== 'TODOS' && m.uf !== filtroEstado) return false
+      if (filtroCidade !== 'TODAS' && m.cidade !== filtroCidade) return false
+      return true
     })
-  }, [medidores, ordens])
 
-  // KPIs
-  const totalLojas = lojas.length
-  const totalMedidores = medidores.length
-  const medidoresEmRota = medidoresComStatus.filter(m => m.statusCampo === 'EM_ROTA').length
-  const medidoresLivres = totalMedidores - medidoresEmRota
-  const demandasAbertas = ordens.filter(o => o.status === 'PENDENTE_LOJA' || o.status === 'PENDENTE').length
-  const demandasEmRota = ordens.filter(o => o.status === 'EM_ROTA').length
+    return { lojasFiltradas: lojasRes, medidoresFiltrados: medidoresRes, ordensFiltradas: ordensRes }
+  }, [lojas, medidores, ordens, filtroEstado, filtroCidade, filtroLoja, filtroMedidor, filtroAno, filtroMes, filtroStatusOS])
 
-  // 3. Inicializar Mapa Leaflet quando no modo 'panorama'
+  // KPIs dinâmicos baseados no filtro atual
+  const totalLojasExibidas = lojasFiltradas.length
+  const totalMedidoresExibidos = medidoresFiltrados.length
+  const medidoresEmRotaExibidos = medidoresFiltrados.filter(m => m.statusCampo === 'EM_ROTA').length
+  const medidoresLivresExibidos = totalMedidoresExibidos - medidoresEmRotaExibidos
+  const demandasAbertasExibidas = ordensFiltradas.filter(o => o.status === 'PENDENTE_LOJA' || o.status === 'PENDENTE').length
+  const demandasEmRotaExibidas = ordensFiltradas.filter(o => o.status === 'EM_ROTA').length
+  const totalConcluidasExibidas = ordensFiltradas.filter(o => o.status === 'CONCLUIDO').length
+
+  // 4. Inicializar Mapa Leaflet
   useEffect(() => {
     if (modo !== 'panorama') return
     if (!mapContainerRef.current || !window.L) return
 
     if (!mapInstanceRef.current) {
       const map = window.L.map(mapContainerRef.current, {
-        center: [-15.7942, -47.8822], // Centro de Brasília
+        center: [-15.7942, -47.8822],
         zoom: 11,
         zoomControl: false
       })
@@ -124,14 +252,12 @@ export default function TorreControle({ perfil, setToken }) {
     }
   }, [modo])
 
-  // 3.1 Camadas de Tile (Google Maps Ruas, Satélite, Dark)
+  // 4.1 Camadas do Mapa
   useEffect(() => {
     const map = mapInstanceRef.current
     if (!map || !window.L) return
 
-    if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current)
-    }
+    if (tileLayerRef.current) map.removeLayer(tileLayerRef.current)
 
     let url = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
     let options = { maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '&copy; Google Maps' }
@@ -147,22 +273,31 @@ export default function TorreControle({ perfil, setToken }) {
     tileLayerRef.current = window.L.tileLayer(url, options).addTo(map)
   }, [tipoMapa, modo])
 
-  // 3.2 Atualização dos Marcadores no Mapa
+  // 4.2 Auto-ajuste de câmera quando o Estado selecionado mudar
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    if (!map) return
+
+    if (filtroEstado !== 'TODOS' && COORDENADAS_ESTADOS[filtroEstado]) {
+      const alvo = COORDENADAS_ESTADOS[filtroEstado]
+      map.flyTo([alvo.lat, alvo.lon], alvo.zoom, { duration: 1.2 })
+    }
+  }, [filtroEstado])
+
+  // 4.3 Renderizar Marcadores Filtrados no Mapa
   useEffect(() => {
     const map = mapInstanceRef.current
     const L = window.L
     if (!map || !L || modo !== 'panorama') return
 
-    const bounds = []
-
-    // A. Marcadores de Lojas
+    // Lojas
     if (markersLojasRef.current) {
       markersLojasRef.current.clearLayers()
       if (mostrarLojas) {
-        lojas.forEach(loja => {
+        lojasFiltradas.forEach(loja => {
           const lat = Number(loja.latitude) || -15.8202
           const lon = Number(loja.longitude) || -47.9548
-          const osDaLoja = ordens.filter(o => o.loja_id === loja.id)
+          const osDaLoja = ordensFiltradas.filter(o => o.loja_id === loja.id)
 
           const iconeLoja = L.divIcon({
             className: 'icone-torre-loja',
@@ -179,28 +314,26 @@ export default function TorreControle({ perfil, setToken }) {
           m.bindPopup(`
             <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 190px;">
               <strong style="color: #0284c7; font-size: 13px;">🏢 ${loja.nome_fantasia}</strong><br/>
-              <span style="color: #64748b; font-size: 11px;">${loja.endereco || 'Brasília - DF'}</span><br/>
+              <span style="color: #64748b; font-size: 11px;">${loja.endereco || 'Endereço não informado'}</span><br/>
               <span style="color: #64748b; font-size: 11px;">📞 ${loja.telefone || 'N/A'}</span><br/>
               <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between;">
-                <span style="font-weight: bold; color: #334155;">Volume de OSs:</span>
-                <span style="font-weight: 900; color: #0284c7;">${osDaLoja.length}</span>
+                <span style="font-weight: bold; color: #334155;">Volume Filtrado:</span>
+                <span style="font-weight: 900; color: #0284c7;">${osDaLoja.length} OSs</span>
               </div>
             </div>
           `)
-          bounds.push([lat, lon])
         })
       }
     }
 
-    // B. Marcadores de Medidores
+    // Medidores
     if (markersMedidoresRef.current) {
       markersMedidoresRef.current.clearLayers()
       if (mostrarMedidores) {
-        medidoresComStatus.forEach(med => {
+        medidoresFiltrados.forEach(med => {
           const lat = Number(med.latitude) || -15.7790
           const lon = Number(med.longitude) || -47.9979
           const emRota = med.statusCampo === 'EM_ROTA'
-
           const corPrincipal = emRota ? '#2563eb' : '#10b981'
           const corPulsante = emRota ? 'rgba(37,99,235,0.35)' : 'rgba(16,185,129,0.35)'
 
@@ -235,27 +368,31 @@ export default function TorreControle({ perfil, setToken }) {
               </button>
             </div>
           `)
-          bounds.push([lat, lon])
         })
       }
     }
 
-    // C. Marcadores de Demandas / Obras
+    // Demandas e Medições
     if (markersDemandasRef.current) {
       markersDemandasRef.current.clearLayers()
       if (mostrarDemandas) {
-        const demandasExibir = ordens.filter(o => o.status === 'PENDENTE_LOJA' || o.status === 'PENDENTE' || o.status === 'EM_ROTA').slice(0, 100)
+        const demandasExibir = ordensFiltradas.slice(0, 150)
         demandasExibir.forEach(os => {
           const lat = Number(os.latitude_obra) || -15.7971
           const lon = Number(os.longitude_obra) || -47.8894
           const emRota = os.status === 'EM_ROTA'
-          const cor = emRota ? '#2563eb' : '#f59e0b'
+          const concluido = os.status === 'CONCLUIDO'
+          
+          let cor = '#f59e0b' // pendente (amarelo)
+          let iconeEmoji = '🚨'
+          if (emRota) { cor = '#2563eb'; iconeEmoji = '🚀'; }
+          else if (concluido) { cor = '#10b981'; iconeEmoji = '✅'; }
 
           const iconeDemanda = L.divIcon({
             className: 'icone-torre-demanda',
             html: `
               <div style="width: 28px; height: 28px; background: ${cor}; border: 2px solid #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); cursor: pointer;">
-                ${emRota ? '🚀' : '🚨'}
+                ${iconeEmoji}
               </div>
             `,
             iconSize: [28, 28],
@@ -269,18 +406,21 @@ export default function TorreControle({ perfil, setToken }) {
               <span style="color: #64748b; font-size: 11px;">📍 ${os.endereco_obra}</span><br/>
               <span style="color: #64748b; font-size: 11px;">🏢 Loja: ${os.loja?.nome_fantasia || 'N/A'}</span><br/>
               <div style="margin-top: 4px; display: flex; justify-content: space-between; font-weight: bold;">
+                <span style="color: #334155;">Status:</span>
+                <span style="color: ${cor};">${os.status.replace('_', ' ')}</span>
+              </div>
+              <div style="margin-top: 2px; display: flex; justify-content: space-between; font-weight: bold;">
                 <span style="color: #334155;">Valor:</span>
                 <span style="color: #16a34a;">${formatarMoeda(os.valor_total_os)}</span>
               </div>
             </div>
           `)
-          bounds.push([lat, lon])
         })
       }
     }
-  }, [lojas, medidoresComStatus, ordens, mostrarLojas, mostrarMedidores, mostrarDemandas, modo])
+  }, [lojasFiltradas, medidoresFiltrados, ordensFiltradas, mostrarLojas, mostrarMedidores, mostrarDemandas, modo])
 
-  // Injetar função global para clique no popup do Leaflet
+  // Injetar função global de simulação
   useEffect(() => {
     window.simularMedidorGlobal = (id) => {
       setMedidorSimuladoId(id)
@@ -295,17 +435,24 @@ export default function TorreControle({ perfil, setToken }) {
     }
   }
 
-  const enquadrarTudo = () => {
-    if (!mapInstanceRef.current) return
-    mapInstanceRef.current.setView([-15.7942, -47.8822], 11)
+  const limparFiltros = () => {
+    setFiltroEstado('TODOS')
+    setFiltroCidade('TODAS')
+    setFiltroLoja('TODAS')
+    setFiltroMedidor('TODOS')
+    setFiltroAno('TODOS')
+    setFiltroMes('TODOS')
+    setFiltroStatusOS('TODOS')
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setView([-15.7942, -47.8822], 11)
+    }
   }
 
-  // Se o admin estiver no modo de simulação de um medidor específico
+  // MODO SIMULAÇÃO
   if (modo === 'simulacao' && medidorSimuladoId) {
     const medAtual = medidores.find(m => m.id === medidorSimuladoId)
     return (
       <div className="space-y-4">
-        {/* Banner de Aviso de Impersonação */}
         <div className="bg-gradient-to-r from-blue-900/80 via-indigo-900/80 to-slate-900 border-2 border-blue-500/50 p-4 md:p-5 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xl">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center text-2xl shadow-lg shadow-blue-500/30">
@@ -349,183 +496,324 @@ export default function TorreControle({ perfil, setToken }) {
           </div>
         </div>
 
-        {/* Renderiza o painel real do medidor */}
         <PortalUsuario perfil="MEDIDOR" refId={medidorSimuladoId} setToken={setToken} />
       </div>
     )
   }
 
-  // --- VISÃO PANORÂMICA: TORRE DE CONTROLE ---
+  // --- MODO PANORAMA (TORRE DE CONTROLE) ---
   return (
-    <div className="flex flex-col h-[calc(100vh-100px)] space-y-4">
-      {/* 1. CABEÇALHO DE KPIS DA OPERAÇÃO DE CAMPO */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 shrink-0">
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center gap-3">
+    <div className="flex flex-col h-[calc(100vh-100px)] space-y-3">
+      {/* 1. CABEÇALHO DE KPIS */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center text-xl">🏢</div>
           <div>
-            <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Lojas Conectadas</p>
-            <p className="text-xl md:text-2xl font-black text-white">{totalLojas}</p>
+            <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Lojas no Filtro</p>
+            <p className="text-xl md:text-2xl font-black text-white">{totalLojasExibidas}</p>
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center gap-3">
+        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-emerald-600/20 text-emerald-400 flex items-center justify-center text-xl">🛵</div>
           <div>
             <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Medidores em Campo</p>
             <div className="flex items-center gap-2">
-              <span className="text-xl md:text-2xl font-black text-white">{totalMedidores}</span>
+              <span className="text-xl md:text-2xl font-black text-white">{totalMedidoresExibidos}</span>
               <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">
-                {medidoresLivres} livres
+                {medidoresLivresExibidos} livres
               </span>
               <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-md">
-                {medidoresEmRota} rota
+                {medidoresEmRotaExibidos} rota
               </span>
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center gap-3">
+        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-600/20 text-amber-400 flex items-center justify-center text-xl">🚨</div>
           <div>
             <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Demandas Pendentes</p>
-            <p className="text-xl md:text-2xl font-black text-amber-400">{demandasAbertas}</p>
+            <p className="text-xl md:text-2xl font-black text-amber-400">{demandasAbertasExibidas}</p>
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center gap-3">
+        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center text-xl">🚀</div>
           <div>
-            <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Medições em Rota Hoje</p>
-            <p className="text-xl md:text-2xl font-black text-indigo-400">{demandasEmRota}</p>
+            <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Medições Concluídas</p>
+            <p className="text-xl md:text-2xl font-black text-indigo-400">{totalConcluidasExibidas}</p>
           </div>
         </div>
       </div>
 
-      {/* 2. BARRA DE FERRAMENTAS E CONTROLES */}
-      <div className="bg-slate-900/90 border border-slate-800 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 shrink-0 backdrop-blur-md">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-black text-white uppercase tracking-wider mr-2 flex items-center gap-1.5">
+      {/* 2. PAINEL DE SUPER FILTROS INTELIGENTES */}
+      <div className="bg-slate-900/95 border border-slate-800 p-3 rounded-2xl shrink-0 backdrop-blur-md space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            Torre de Controle
-          </span>
+            <span className="text-xs font-black text-white uppercase tracking-wider">Filtros da Torre de Controle</span>
+            <span className="text-[10px] text-slate-500 font-bold bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800">
+              {ordensFiltradas.length} OSs selecionadas
+            </span>
+          </div>
 
-          {/* Filtros de Camada */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={limparFiltros}
+              className="text-[10px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-lg font-bold transition-all"
+            >
+              🔄 Limpar Filtros
+            </button>
+            <button
+              onClick={() => setMostrarFiltrosAvancados(!mostrarFiltrosAvancados)}
+              className="text-[10px] text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 px-2.5 py-1 rounded-lg font-bold"
+            >
+              {mostrarFiltrosAvancados ? '▲ Ocultar Filtros' : '▼ Expandir Filtros'}
+            </button>
+          </div>
+        </div>
+
+        {mostrarFiltrosAvancados && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-1 border-t border-slate-800/80">
+            {/* 1. ESTADO (UF) */}
+            <div>
+              <label className="block text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1 ml-0.5">🗺️ Estado (UF)</label>
+              <select
+                value={filtroEstado}
+                onChange={(e) => setFiltroEstado(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs font-bold py-1.5 px-2 rounded-xl outline-none focus:border-blue-500"
+              >
+                <option value="TODOS">Todos os Estados</option>
+                {estadosDisponiveis.map(uf => (
+                  <option key={uf} value={uf}>{uf} - {COORDENADAS_ESTADOS[uf]?.nome || uf}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 2. CIDADE */}
+            <div>
+              <label className="block text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1 ml-0.5">🏙️ Cidade</label>
+              <select
+                value={filtroCidade}
+                onChange={(e) => setFiltroCidade(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs font-bold py-1.5 px-2 rounded-xl outline-none focus:border-blue-500"
+              >
+                <option value="TODAS">Todas as Cidades</option>
+                {cidadesDisponiveis.map(cid => (
+                  <option key={cid} value={cid}>{cid}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 3. LOJA */}
+            <div>
+              <label className="block text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1 ml-0.5">🏢 Loja Parceira</label>
+              <select
+                value={filtroLoja}
+                onChange={(e) => setFiltroLoja(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs font-bold py-1.5 px-2 rounded-xl outline-none focus:border-blue-500"
+              >
+                <option value="TODAS">Todas as Lojas ({lojasFiltradas.length})</option>
+                {lojasFiltradas.slice(0, 100).map(l => (
+                  <option key={l.id} value={l.id.toString()}>{l.nome_fantasia}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 4. MEDIDOR */}
+            <div>
+              <label className="block text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1 ml-0.5">🛵 Medidor</label>
+              <select
+                value={filtroMedidor}
+                onChange={(e) => setFiltroMedidor(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs font-bold py-1.5 px-2 rounded-xl outline-none focus:border-blue-500"
+              >
+                <option value="TODOS">Todos os Medidores ({medidoresFiltrados.length})</option>
+                {medidoresFiltrados.slice(0, 100).map(m => (
+                  <option key={m.id} value={m.id.toString()}>{m.nome_completo}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 5. STATUS DA MEDIÇÃO */}
+            <div>
+              <label className="block text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1 ml-0.5">⚡ Status</label>
+              <select
+                value={filtroStatusOS}
+                onChange={(e) => setFiltroStatusOS(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs font-bold py-1.5 px-2 rounded-xl outline-none focus:border-blue-500"
+              >
+                <option value="TODOS">Todos os Status</option>
+                <option value="EM_ABERTO">🚨 Em Aberto (Pendente)</option>
+                <option value="EM_EXECUCAO">🚀 Em Execução (Em Rota)</option>
+                <option value="CONCLUIDO">✅ Concluído</option>
+                <option value="CANCELADO">❌ Cancelado</option>
+              </select>
+            </div>
+
+            {/* 6. ANO */}
+            <div>
+              <label className="block text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1 ml-0.5">📅 Ano</label>
+              <select
+                value={filtroAno}
+                onChange={(e) => setFiltroAno(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs font-bold py-1.5 px-2 rounded-xl outline-none focus:border-blue-500"
+              >
+                <option value="TODOS">Todos os Anos</option>
+                {anosDisponiveis.map(a => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 7. MÊS */}
+            <div>
+              <label className="block text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1 ml-0.5">🗓️ Mês</label>
+              <select
+                value={filtroMes}
+                onChange={(e) => setFiltroMes(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs font-bold py-1.5 px-2 rounded-xl outline-none focus:border-blue-500"
+              >
+                <option value="TODOS">Todos os Meses</option>
+                <option value="01">Janeiro</option>
+                <option value="02">Fevereiro</option>
+                <option value="03">Março</option>
+                <option value="04">Abril</option>
+                <option value="05">Maio</option>
+                <option value="06">Junho</option>
+                <option value="07">Julho</option>
+                <option value="08">Agosto</option>
+                <option value="09">Setembro</option>
+                <option value="10">Outubro</option>
+                <option value="11">Novembro</option>
+                <option value="12">Dezembro</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 3. BARRA DE FERRAMENTAS DO MAPA */}
+      <div className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-2xl flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setMostrarLojas(!mostrarLojas)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${mostrarLojas ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40' : 'bg-slate-800 text-slate-500 border border-slate-700'}`}
+            className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${mostrarLojas ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40' : 'bg-slate-800 text-slate-500 border border-slate-700'}`}
           >
-            🏢 Lojas ({totalLojas})
+            🏢 Lojas ({totalLojasExibidas})
           </button>
 
           <button
             onClick={() => setMostrarMedidores(!mostrarMedidores)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${mostrarMedidores ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-500 border border-slate-700'}`}
+            className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${mostrarMedidores ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-500 border border-slate-700'}`}
           >
-            🛵 Medidores ({totalMedidores})
+            🛵 Medidores ({totalMedidoresExibidos})
           </button>
 
           <button
             onClick={() => setMostrarDemandas(!mostrarDemandas)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${mostrarDemandas ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-slate-800 text-slate-500 border border-slate-700'}`}
+            className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${mostrarDemandas ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-slate-800 text-slate-500 border border-slate-700'}`}
           >
-            📍 Demandas Ativas ({demandasAbertas + demandasEmRota})
+            📍 Medições ({ordensFiltradas.length})
           </button>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Seletor do Tipo de Mapa */}
           <div className="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center text-xs">
             <button
               onClick={() => setTipoMapa('google_streets')}
-              className={`px-2.5 py-1 rounded-lg font-bold transition-all ${tipoMapa === 'google_streets' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              className={`px-2 py-0.5 rounded-lg font-bold transition-all ${tipoMapa === 'google_streets' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
             >
               Ruas
             </button>
             <button
               onClick={() => setTipoMapa('google_sat')}
-              className={`px-2.5 py-1 rounded-lg font-bold transition-all ${tipoMapa === 'google_sat' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              className={`px-2 py-0.5 rounded-lg font-bold transition-all ${tipoMapa === 'google_sat' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
             >
               Satélite
             </button>
             <button
               onClick={() => setTipoMapa('dark')}
-              className={`px-2.5 py-1 rounded-lg font-bold transition-all ${tipoMapa === 'dark' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              className={`px-2 py-0.5 rounded-lg font-bold transition-all ${tipoMapa === 'dark' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
             >
               Dark
             </button>
           </div>
 
           <button
-            onClick={enquadrarTudo}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-2 rounded-xl border border-slate-700 transition-all flex items-center gap-1"
-            title="Enquadrar Brasília"
+            onClick={() => {
+              if (mapInstanceRef.current) {
+                if (filtroEstado !== 'TODOS' && COORDENADAS_ESTADOS[filtroEstado]) {
+                  const c = COORDENADAS_ESTADOS[filtroEstado]
+                  mapInstanceRef.current.setView([c.lat, c.lon], c.zoom)
+                } else {
+                  mapInstanceRef.current.setView([-15.7942, -47.8822], 11)
+                }
+              }
+            }}
+            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-700 transition-all flex items-center gap-1"
           >
             🎯 Centrar
           </button>
 
           <button
             onClick={() => setDrawerAberto(!drawerAberto)}
-            className="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/30 text-xs font-bold px-3 py-2 rounded-xl transition-all flex items-center gap-1"
+            className="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/30 text-xs font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1"
           >
             {drawerAberto ? '✕ Fechar Feed' : '📋 Abrir Feed'}
           </button>
         </div>
       </div>
 
-      {/* 3. ÁREA PRINCIPAL: MAPA INTERATIVO + FEED LATERAL */}
-      <div className="flex-1 flex gap-4 overflow-hidden relative rounded-2xl border border-slate-800 shadow-2xl">
-        {/* Container do Mapa Leaflet */}
+      {/* 4. MAPA + FEED LATERAL */}
+      <div className="flex-1 flex gap-3 overflow-hidden relative rounded-2xl border border-slate-800 shadow-2xl">
         <div ref={mapContainerRef} className="flex-1 h-full w-full bg-slate-950 z-10" />
 
-        {/* Drawer Lateral de Operações */}
         {drawerAberto && (
           <aside className="w-80 md:w-96 bg-slate-900/95 backdrop-blur-md border-l border-slate-800 flex flex-col z-20 shrink-0">
-            {/* Abas do Feed */}
             <div className="flex border-b border-slate-800 bg-slate-950/60 p-2 gap-1">
               <button
                 onClick={() => setAbaFeed('medidores')}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${abaFeed === 'medidores' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800'}`}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${abaFeed === 'medidores' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800'}`}
               >
-                🛵 Medidores ({totalMedidores})
+                🛵 Medidores ({totalMedidoresExibidos})
               </button>
               <button
                 onClick={() => setAbaFeed('demandas')}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${abaFeed === 'demandas' ? 'bg-amber-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:bg-slate-800'}`}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${abaFeed === 'demandas' ? 'bg-amber-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:bg-slate-800'}`}
               >
-                🚨 Demandas
+                🚨 Medições ({ordensFiltradas.length})
               </button>
               <button
                 onClick={() => setAbaFeed('lojas')}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${abaFeed === 'lojas' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800'}`}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${abaFeed === 'lojas' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800'}`}
               >
-                🏢 Lojas ({totalLojas})
+                🏢 Lojas ({totalLojasExibidas})
               </button>
             </div>
 
-            {/* Campo de Busca Rápida */}
-            <div className="p-3 border-b border-slate-800">
+            <div className="p-2.5 border-b border-slate-800">
               <input
                 type="text"
                 value={buscaFeed}
                 onChange={(e) => setBuscaFeed(e.target.value)}
                 placeholder={`Buscar no feed de ${abaFeed}...`}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-blue-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 outline-none focus:border-blue-500"
               />
             </div>
 
-            {/* Conteúdo do Feed com Scroll */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2.5 custom-scrollbar">
-              {/* FEED DE MEDIDORES */}
+            <div className="flex-1 overflow-y-auto p-2.5 space-y-2 custom-scrollbar">
               {abaFeed === 'medidores' && (
-                medidoresComStatus
+                medidoresFiltrados
                   .filter(m => m.nome_completo?.toLowerCase().includes(buscaFeed.toLowerCase()) || m.telefone?.includes(buscaFeed))
                   .slice(0, 100)
                   .map(med => (
-                    <div key={med.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 hover:border-slate-700 transition-all">
-                      <div className="flex items-start justify-between gap-2 mb-2">
+                    <div key={med.id} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 hover:border-slate-700 transition-all">
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
                         <div>
                           <p className="font-black text-xs text-white">{med.nome_completo}</p>
-                          <p className="text-[10px] text-slate-500 font-mono">📞 {med.telefone || 'Sem fone'}</p>
+                          <p className="text-[10px] text-slate-500 font-mono">{med.uf} • {med.cidade}</p>
                         </div>
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${med.statusCampo === 'EM_ROTA' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}`}>
                           {med.statusCampo === 'EM_ROTA' ? 'Em Rota' : 'Livre'}
@@ -537,16 +825,16 @@ export default function TorreControle({ perfil, setToken }) {
                         <span>Entregas: <strong className="text-blue-400">{med.totalConcluidas}</strong></span>
                       </div>
 
-                      <div className="flex gap-2 pt-2 border-t border-slate-900">
+                      <div className="flex gap-2 pt-1.5 border-t border-slate-900">
                         <button
                           onClick={() => focarNoPonto(med.latitude, med.longitude)}
-                          className="flex-1 bg-slate-900 hover:bg-slate-800 text-slate-300 py-1.5 rounded-lg text-[10px] font-bold transition-colors"
+                          className="flex-1 bg-slate-900 hover:bg-slate-800 text-slate-300 py-1 rounded-lg text-[10px] font-bold"
                         >
                           📍 Ver no Mapa
                         </button>
                         <button
                           onClick={() => { setMedidorSimuladoId(med.id); setModo('simulacao') }}
-                          className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-1.5 rounded-lg text-[10px] font-black transition-colors"
+                          className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-1 rounded-lg text-[10px] font-black"
                         >
                           👁️ Simular
                         </button>
@@ -555,18 +843,16 @@ export default function TorreControle({ perfil, setToken }) {
                   ))
               )}
 
-              {/* FEED DE DEMANDAS */}
               {abaFeed === 'demandas' && (
-                ordens
-                  .filter(o => o.status === 'PENDENTE_LOJA' || o.status === 'PENDENTE' || o.status === 'EM_ROTA')
+                ordensFiltradas
                   .filter(o => o.cliente_nome?.toLowerCase().includes(buscaFeed.toLowerCase()) || o.endereco_obra?.toLowerCase().includes(buscaFeed.toLowerCase()))
                   .slice(0, 100)
                   .map(os => (
-                    <div key={os.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 hover:border-slate-700 transition-all">
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <span className="text-[10px] font-mono text-blue-400 font-bold">OS #00{os.id}</span>
-                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${os.status === 'EM_ROTA' ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                          {os.status === 'EM_ROTA' ? 'Em Rota' : 'Pendente'}
+                    <div key={os.id} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 hover:border-slate-700 transition-all">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-[10px] font-mono text-blue-400 font-bold">OS #00${os.id}</span>
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${os.status === 'EM_ROTA' ? 'bg-blue-500/20 text-blue-400' : (os.status === 'CONCLUIDO' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400')}`}>
+                          {os.status.replace('_', ' ')}
                         </span>
                       </div>
 
@@ -574,7 +860,7 @@ export default function TorreControle({ perfil, setToken }) {
                       <p className="text-[10px] text-slate-400 truncate mt-0.5">📍 {os.endereco_obra}</p>
                       <p className="text-[10px] text-slate-500 mt-0.5">🏢 Loja: {os.loja?.nome_fantasia || 'N/A'}</p>
 
-                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-900">
+                      <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-900">
                         <span className="text-[11px] font-black text-emerald-400">{formatarMoeda(os.valor_total_os)}</span>
                         <button
                           onClick={() => focarNoPonto(os.latitude_obra, os.longitude_obra)}
@@ -587,22 +873,22 @@ export default function TorreControle({ perfil, setToken }) {
                   ))
               )}
 
-              {/* FEED DE LOJAS */}
               {abaFeed === 'lojas' && (
-                lojas
+                lojasFiltradas
                   .filter(l => l.nome_fantasia?.toLowerCase().includes(buscaFeed.toLowerCase()) || l.endereco?.toLowerCase().includes(buscaFeed.toLowerCase()))
                   .slice(0, 100)
                   .map(loja => {
-                    const osCount = ordens.filter(o => o.loja_id === loja.id).length
+                    const osCount = ordensFiltradas.filter(o => o.loja_id === loja.id).length
+                    const { uf, cidade } = extrairUfECidade(loja.endereco, loja.latitude, loja.longitude)
                     return (
-                      <div key={loja.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 hover:border-slate-700 transition-all">
+                      <div key={loja.id} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 hover:border-slate-700 transition-all">
                         <div className="flex items-center justify-between mb-1">
                           <p className="font-black text-xs text-sky-400 truncate">{loja.nome_fantasia}</p>
                           <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-900 px-2 py-0.5 rounded">
                             {osCount} OSs
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-400 truncate">📍 {loja.endereco || 'Brasília - DF'}</p>
+                        <p className="text-[10px] text-slate-400 truncate">📍 {cidade} - {uf}</p>
                         <p className="text-[10px] text-slate-500 mt-0.5">📞 {loja.telefone || 'N/A'}</p>
 
                         <button
