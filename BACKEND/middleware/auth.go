@@ -53,10 +53,16 @@ func Auth(c *fiber.Ctx) error {
 		refID = r
 	}
 
+	var redeID float64
+	if rd, ok := claims["rede_id"].(float64); ok {
+		redeID = rd
+	}
+
 	// Salva com tipos seguros
 	c.Locals("usuario_id", uint(idFloat))
 	c.Locals("perfil", perfil)
 	c.Locals("ref_id", refID)
+	c.Locals("rede_id", redeID)
 
 	return c.Next()
 }

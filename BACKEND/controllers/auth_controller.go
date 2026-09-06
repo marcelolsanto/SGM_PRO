@@ -39,13 +39,19 @@ func Login(c *fiber.Ctx) error {
 		return c.Status(401).JSON(fiber.Map{"erro": "Credenciais incorretas."})
 	}
 
+	var redeID uint = 0
+	if usuario.RedeID != nil {
+		redeID = *usuario.RedeID
+	}
+
 	claims := jwt.MapClaims{
-		"id":     usuario.ID,
-		"nome":   usuario.Nome,
-		"email":  usuario.Email,
-		"perfil": usuario.Perfil,
-		"ref_id": usuario.RefID,
-		"exp":    time.Now().Add(time.Hour * 24).Unix(),
+		"id":      usuario.ID,
+		"nome":    usuario.Nome,
+		"email":   usuario.Email,
+		"perfil":  usuario.Perfil,
+		"ref_id":  usuario.RefID,
+		"rede_id": redeID,
+		"exp":     time.Now().Add(time.Hour * 24).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -55,10 +61,11 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"token":  t,
-		"nome":   usuario.Nome,
-		"perfil": usuario.Perfil,
-		"ref_id": usuario.RefID,
+		"token":   t,
+		"nome":    usuario.Nome,
+		"perfil":  usuario.Perfil,
+		"ref_id":  usuario.RefID,
+		"rede_id": usuario.RedeID,
 	})
 }
 

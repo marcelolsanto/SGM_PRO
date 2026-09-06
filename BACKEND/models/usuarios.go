@@ -9,6 +9,8 @@ type Usuario struct {
 	Email         string     `gorm:"column:email;size:255;unique;not null" json:"email"`
 	Senha         string     `gorm:"column:senha;not null" json:"-"`
 	Perfil        string     `gorm:"column:perfil;size:20;default:'ADMIN'" json:"perfil"`
+	RedeID        *uint      `gorm:"column:rede_id;index" json:"rede_id"`
+	OrigemTipo    string     `gorm:"column:origem_tipo;size:20;default:'PLATAFORMA'" json:"origem_tipo"`
 	ResetToken    string     `gorm:"column:reset_token;size:100;index" json:"-"`
 	ResetTokenExp *time.Time `gorm:"column:reset_token_exp" json:"-"`
 	CriadoEm      time.Time  `gorm:"column:criado_em;autoCreateTime" json:"criado_em"`

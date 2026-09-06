@@ -17,6 +17,10 @@ type Medidor struct {
 	DiasDisponiveis   string     `gorm:"column:dias_disponiveis;default:'[\"Seg\",\"Ter\",\"Qua\",\"Qui\",\"Sex\",\"Sab\"]'" json:"dias_disponiveis"`
 	HorasDisponiveis  string     `gorm:"column:horas_disponiveis;default:'[\"08:00\",\"09:00\",\"10:00\",\"11:00\",\"13:00\",\"14:00\",\"15:00\",\"16:00\",\"17:00\"]'" json:"horas_disponiveis"`
 	EstaAtivo         bool       `gorm:"column:esta_ativo;default:true" json:"esta_ativo"`
+	LojaVinculadaID   *uint      `gorm:"column:loja_vinculada_id;index" json:"loja_vinculada_id"`
+	RedeID            *uint      `gorm:"column:rede_id;index" json:"rede_id"`
+	OrigemTipo        string     `gorm:"column:origem_tipo;size:20;default:'PLATAFORMA'" json:"origem_tipo"` // PLATAFORMA, LOJA, MEDIDOR
+	OrigemID          *uint      `gorm:"column:origem_id" json:"origem_id"`
 	CriadoEm          time.Time  `gorm:"column:criado_em;autoCreateTime" json:"criado_em"`
 }
 

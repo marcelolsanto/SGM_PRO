@@ -84,10 +84,10 @@ export default function NovaOsModal({ isOpen, onClose, onSuccess, osParaEditar, 
       }
       
       let idDaLoja = 0;
-      if (perfil === 'LOJA') {
-         idDaLoja = parseInt(refId);
-      } else {
-         idDaLoja = parseInt(formData.loja_id);
+      if (formData.loja_id) {
+        idDaLoja = parseInt(formData.loja_id);
+      } else if (perfil === 'LOJA') {
+        idDaLoja = parseInt(refId);
       }
 
       if (!idDaLoja || isNaN(idDaLoja)) {
@@ -123,11 +123,11 @@ export default function NovaOsModal({ isOpen, onClose, onSuccess, osParaEditar, 
         <form onSubmit={handleSubmit} className="space-y-5 md:space-y-6 flex-1">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
             
-            {(perfil === 'ADMIN' || !perfil) && (
-              <div><label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Loja Solicitante</label><select required className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-blue-500" value={formData.loja_id} onChange={e => setFormData({...formData, loja_id: e.target.value})}>{lojas && lojas.map(l => <option key={l.id} value={l.id}>{l.nome_fantasia}</option>)}</select></div>
+            {(perfil === 'ADMIN' || !perfil || (lojas && lojas.length > 1)) && (
+              <div><label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Unidade / Filial</label><select required className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-blue-500" value={formData.loja_id} onChange={e => setFormData({...formData, loja_id: e.target.value})}>{lojas && lojas.map(l => <option key={l.id} value={l.id}>{l.nome_fantasia} {l.eh_matriz ? '⭐ (Matriz)' : ''} {l.cidade ? `(${l.cidade})` : ''}</option>)}</select></div>
             )}
             
-            <div className={perfil === 'LOJA' ? "md:col-span-2" : ""}><label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Cliente Final</label><select required className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-blue-500" value={formData.cliente_nome} onChange={e => setFormData({...formData, cliente_nome: e.target.value})}>{clientes && clientes.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}</select></div>
+            <div className={(perfil === 'LOJA' && (!lojas || lojas.length <= 1)) ? "md:col-span-2" : ""}><label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Cliente Final</label><select required className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-blue-500" value={formData.cliente_nome} onChange={e => setFormData({...formData, cliente_nome: e.target.value})}>{clientes && clientes.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}</select></div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-950/50 p-4 rounded-2xl border border-slate-800">

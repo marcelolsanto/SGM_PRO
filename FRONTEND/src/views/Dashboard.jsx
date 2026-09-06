@@ -96,10 +96,14 @@ export default function Dashboard() {
           </div>
 
           <div>
-            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">🏢 Filtrar por Loja</label>
+            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">🏢 Unidade / Rede de Lojas</label>
             <select className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 text-blue-400 outline-none focus:border-blue-500 appearance-none font-bold text-sm" value={filtroLoja} onChange={(e) => setFiltroLoja(e.target.value)}>
-              <option value="TODAS">Todas as Lojas</option>
-              {lojas.map(l => <option key={l.id} value={l.id.toString()}>{l.nome_fantasia}</option>)}
+              <option value="TODAS">Todas as Lojas & Redes</option>
+              {lojas.map(l => (
+                <option key={l.id} value={l.id.toString()}>
+                  {l.nome_fantasia} {l.nome_rede ? `• [Rede: ${l.nome_rede}]` : ''} {l.eh_matriz ? '⭐ (Matriz)' : ''}
+                </option>
+              ))}
             </select>
           </div>
 

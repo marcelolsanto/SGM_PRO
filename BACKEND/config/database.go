@@ -52,6 +52,9 @@ func ConectarBanco() {
 		&models.Ambiente{},
 		&models.BriefingCliente{},
 		&models.Cliente{},
+		&models.FechamentoMedidor{},
+		&models.FechamentoMedidorItem{},
+		&models.LancamentoFinanceiro{},
 	)
 	if err != nil {
 		log.Println("⚠️ Aviso nas migrações do banco:", err)

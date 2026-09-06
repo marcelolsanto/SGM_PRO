@@ -8,15 +8,22 @@ import (
 	"workspace/backend/utils" // Nossa ferramenta de limpeza
 )
 
-func ObterLojas(perfil string, refID uint) ([]models.Loja, error) {
+func ObterLojas(perfil string, refID uint, redeID uint) ([]models.Loja, error) {
 	var lojas []models.Loja
 	
 	if perfil == "LOJA" {
+		if redeID > 0 {
+			// Se o lojista for gestor de rede, lista todas as filiais da sua rede
+			err := config.DB.Where("rede_id = ? OR id = ?", redeID, refID).Order("eh_matriz DESC, nome_fantasia ASC").Find(&lojas).Error
+			return lojas, err
+		}
+		// Loja individual
 		err := config.DB.Where("id = ?", refID).Find(&lojas).Error
 		return lojas, err
 	}
 	
-	err := config.DB.Find(&lojas).Error
+	// Admin vê todas as lojas
+	err := config.DB.Order("nome_rede ASC, eh_matriz DESC, nome_fantasia ASC").Find(&lojas).Error
 	return lojas, err
 }
 
