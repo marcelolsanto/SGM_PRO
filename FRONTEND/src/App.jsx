@@ -57,6 +57,7 @@ function App() {
 
   const menuAdmin = [
     { id: 'dashboard', icon: '📊', label: 'Visão Geral (BI)' },
+    { id: 'campo', icon: '🗺️', label: 'Torre de Controle (Campo)' },
     { id: 'operacoes', icon: '🛠️', label: 'Gestão de Operações' },
     { id: 'admin', icon: '⚙️', label: 'Cadastros Base' },
     { id: 'institucional', icon: '🌐', label: 'Site Institucional' }
@@ -64,6 +65,7 @@ function App() {
   
   const menuLoja = [
     { id: 'dashboard', icon: '📊', label: 'Meus Resultados' },
+    { id: 'campo', icon: '🗺️', label: 'Torre de Controle (Campo)' },
     { id: 'operacoes', icon: '📋', label: 'Minhas Medições' },
     { id: 'admin', icon: '⚙️', label: 'Meus Cadastros' },
     { id: 'institucional', icon: '🌐', label: 'Site Institucional' }
@@ -79,6 +81,9 @@ function App() {
         {perfil !== 'MEDIDOR' && <button onClick={() => setMenuAberto(!menuAberto)} className="text-2xl text-slate-400">☰</button>}
         {perfil === 'MEDIDOR' && (
           <div className="flex items-center gap-2">
+            <button onClick={() => setAbaAtiva(abaAtiva === 'campo' ? 'operacoes' : 'campo')} className="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-lg font-bold flex items-center gap-1">
+              {abaAtiva === 'campo' ? '🛵 Minha Rota' : '🗺️ Torre de Controle'}
+            </button>
             <button onClick={() => setAbaAtiva(abaAtiva === 'institucional' ? 'operacoes' : 'institucional')} className="text-xs bg-blue-600/20 text-blue-400 px-3 py-1 rounded-lg font-bold">
               {abaAtiva === 'institucional' ? 'Minhas OSs' : '🌐 Planos'}
             </button>
@@ -122,6 +127,7 @@ function App() {
           {abaAtiva === 'institucional' && <LandingPage onIrParaLogin={() => setAbaAtiva('dashboard')} />}
 
           {perfil === 'ADMIN' && abaAtiva === 'dashboard' && <Dashboard perfil={perfil} />}
+          {abaAtiva === 'campo' && <TorreControle perfil={perfil} setToken={setToken} />}
           {perfil === 'ADMIN' && abaAtiva === 'operacoes' && <Operacoes />}
           {perfil === 'ADMIN' && abaAtiva === 'admin' && <Admin perfil={perfil} refId={refId} />}
 
@@ -129,7 +135,7 @@ function App() {
           {perfil === 'LOJA' && abaAtiva === 'operacoes' && <PortalUsuario perfil={perfil} refId={refId} setToken={setToken} />}
           {perfil === 'LOJA' && abaAtiva === 'admin' && <Admin perfil={perfil} refId={refId} />}
 
-          {perfil === 'MEDIDOR' && abaAtiva !== 'institucional' && <PortalUsuario perfil={perfil} refId={refId} setToken={setToken} />}
+          {perfil === 'MEDIDOR' && abaAtiva !== 'institucional' && abaAtiva !== 'campo' && <PortalUsuario perfil={perfil} refId={refId} setToken={setToken} />}
         </div>
       </main>
     </div>
