@@ -2,6 +2,19 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import ModalAuditoriaFinanceira from '../components/ModalAuditoriaFinanceira'
 
+const ESTADOS_DISPONIVEIS = ['TODOS', 'BA', 'DF', 'GO', 'MG', 'PR', 'RJ', 'RS', 'SP']
+
+const CIDADES_POR_ESTADO = {
+  'BA': ['Salvador'],
+  'DF': ['Brasília'],
+  'GO': ['Goiânia'],
+  'MG': ['Belo Horizonte'],
+  'PR': ['Curitiba'],
+  'RJ': ['Rio de Janeiro'],
+  'RS': ['Porto Alegre'],
+  'SP': ['Campinas', 'São Paulo']
+}
+
 export default function PainelFinanceiro({ onVoltar, perfil = 'ADMIN' }) {
   const [abaAtiva, setAbaAtiva] = useState('lotes') // 'lotes' | 'fluxo' | 'livro' | 'compliance'
   const [lotes, setLotes] = useState([])
@@ -11,7 +24,9 @@ export default function PainelFinanceiro({ onVoltar, perfil = 'ADMIN' }) {
   const [gerandoLotes, setGerandoLotes] = useState(false)
   const [exportandoCSV, setExportandoCSV] = useState(false)
 
-  // 🎯 FILTROS ANALÍTICOS (Ano, Mês, Unidade/Loja, Medidor)
+  // 🎯 FILTROS ANALÍTICOS (Estado, Cidade, Ano, Mês, Unidade/Loja, Medidor)
+  const [filtroEstado, setFiltroEstado] = useState('TODOS')
+  const [filtroCidade, setFiltroCidade] = useState('TODAS')
   const [filtroAno, setFiltroAno] = useState('2026')
   const [filtroMes, setFiltroMes] = useState('TODOS')
   const [filtroLoja, setFiltroLoja] = useState('TODAS')
@@ -68,10 +83,65 @@ export default function PainelFinanceiro({ onVoltar, perfil = 'ADMIN' }) {
     carregarOpcoesFiltros()
   }, [])
 
+  const handleEstadoChange = (novoEstado) => {
+    setFiltroEstado(novoEstado)
+    setFiltroCidade('TODAS')
+    setFiltroLoja('TODAS')
+    setFiltroMedidor('TODOS')
+  }
+
+  const handleCidadeChange = (novaCidade) => {
+    setFiltroCidade(novaCidade)
+    setFiltroLoja('TODAS')
+    setFiltroMedidor('TODOS')
+  }
+
+  const handleLojaChange = (novaLoja) => {
+    setFiltroLoja(novaLoja)
+    setFiltroMedidor('TODOS')
+  }
+
+  const cidadesDisponiveis = filtroEstado !== 'TODOS' ? (CIDADES_POR_ESTADO[filtroEstado] || []) : []
+
+  // Filtragem cascata de lojas
+  const lojasDropdown = lojas.filter(l => {
+    const end = (l.endereco || '').toUpperCase()
+    if (filtroEstado !== 'TODOS') {
+      const temUf = end.includes(`- ${filtroEstado}`) || end.includes(`/${filtroEstado}`) || end.endsWith(` ${filtroEstado}`)
+      if (!temUf) return false
+    }
+    if (filtroCidade !== 'TODAS') {
+      const endOrig = (l.endereco || '').toLowerCase()
+      if (!endOrig.includes(filtroCidade.toLowerCase())) return false
+    }
+    return true
+  })
+
+  // Filtragem cascata de medidores
+  const medidoresDropdown = medidores.filter(m => {
+    if (filtroLoja !== 'TODAS' && filtroLoja !== 'TODOS') {
+      if (m.loja_vinculada_id && m.loja_vinculada_id.toString() === filtroLoja) return true
+      if (m.loja_vinculada_id && m.loja_vinculada_id.toString() !== filtroLoja) return false
+    }
+    const end = (m.endereco || '').toUpperCase()
+    if (filtroEstado !== 'TODOS') {
+      const temUf = end.includes(`- ${filtroEstado}`) || end.includes(`/${filtroEstado}`) || end.endsWith(` ${filtroEstado}`)
+      const isDF = filtroEstado === 'DF' && (end.includes('DF') || end.includes('BRASÍLIA') || end.includes('BRASILIA') || end.includes('TAGUATINGA') || end.includes('CEILÂNDIA') || end.includes('SOBRADINHO') || end.includes('ASA NORTE') || end.includes('ASA SUL') || end.includes('LAGO NORTE') || end.includes('LAGO SUL') || end.includes('GUARA'))
+      if (!temUf && !isDF) return false
+    }
+    if (filtroCidade !== 'TODAS') {
+      const endOrig = (m.endereco || '').toLowerCase()
+      const matchCidade = endOrig.includes(filtroCidade.toLowerCase())
+      const matchDFFallback = filtroCidade === 'Brasília' && (endOrig.includes('df') || endOrig.includes('sobradinho') || endOrig.includes('taguatinga') || endOrig.includes('ceilândia') || endOrig.includes('guará') || endOrig.includes('lago'))
+      if (!matchCidade && !matchDFFallback) return false
+    }
+    return true
+  })
+
   // Recarrega os dados financeiros sempre que os filtros principais forem alterados
   useEffect(() => {
     carregarDados()
-  }, [filtroAno, filtroMes, filtroLoja, filtroMedidor, filtroStatus])
+  }, [filtroAno, filtroMes, filtroLoja, filtroMedidor, filtroEstado, filtroCidade, filtroStatus])
 
   const carregarDados = async () => {
     setLoading(true)
@@ -81,6 +151,8 @@ export default function PainelFinanceiro({ onVoltar, perfil = 'ADMIN' }) {
       if (filtroMes && filtroMes !== 'TODOS') params.mes = filtroMes
       if (filtroLoja && filtroLoja !== 'TODAS') params.loja_id = filtroLoja
       if (filtroMedidor && filtroMedidor !== 'TODOS') params.medidor_id = filtroMedidor
+      if (filtroEstado && filtroEstado !== 'TODOS') params.estado = filtroEstado
+      if (filtroCidade && filtroCidade !== 'TODAS' && filtroCidade !== 'TODOS') params.cidade = filtroCidade
       if (filtroStatus) params.status = filtroStatus
 
       const [resLotes, resFluxo, resLanc] = await Promise.all([
@@ -99,6 +171,8 @@ export default function PainelFinanceiro({ onVoltar, perfil = 'ADMIN' }) {
   }
 
   const handleLimparFiltros = () => {
+    setFiltroEstado('TODOS')
+    setFiltroCidade('TODAS')
     setFiltroAno('2026')
     setFiltroMes('TODOS')
     setFiltroLoja('TODAS')
@@ -115,6 +189,8 @@ export default function PainelFinanceiro({ onVoltar, perfil = 'ADMIN' }) {
       if (filtroMes && filtroMes !== 'TODOS') params.append('mes', filtroMes)
       if (filtroLoja && filtroLoja !== 'TODAS') params.append('loja_id', filtroLoja)
       if (filtroMedidor && filtroMedidor !== 'TODOS') params.append('medidor_id', filtroMedidor)
+      if (filtroEstado && filtroEstado !== 'TODOS') params.append('estado', filtroEstado)
+      if (filtroCidade && filtroCidade !== 'TODAS' && filtroCidade !== 'TODOS') params.append('cidade', filtroCidade)
 
       const url = `/api/financeiro/exportar-contabil?${params.toString()}`
       const res = await axios.get(url, { responseType: 'blob' })
@@ -122,7 +198,8 @@ export default function PainelFinanceiro({ onVoltar, perfil = 'ADMIN' }) {
       const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
-      const nomeSufixo = `${filtroAno}_${filtroMes !== 'TODOS' ? filtroMes : 'consolidado'}`
+      const locSufixo = filtroEstado !== 'TODOS' ? `_${filtroEstado}` : ''
+      const nomeSufixo = `${filtroAno}_${filtroMes !== 'TODOS' ? filtroMes : 'consolidado'}${locSufixo}`
       link.setAttribute('download', `relatorio_contabil_sgm_${nomeSufixo}.csv`)
       document.body.appendChild(link)
       link.click()
@@ -238,16 +315,16 @@ export default function PainelFinanceiro({ onVoltar, perfil = 'ADMIN' }) {
           </div>
         </div>
 
-        {/* 🔥 BARRA DE FILTROS: ANO, MÊS, UNIDADE / LOJA, MEDIDOR 🔥 */}
+        {/* 🔥 BARRA DE FILTROS CASCATA: ESTADO, CIDADE, LOJA, MEDIDOR, ANO, MÊS 🔥 */}
         <div className="bg-slate-900 border border-slate-800 p-4 md:p-5 rounded-3xl shadow-xl space-y-3">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800/80 pb-3">
             <div className="flex items-center gap-2">
-              <span className="text-base">⚡</span>
+              <span className="text-base">📍</span>
               <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-wider">
-                Filtros Analíticos & Consolidação
+                Filtros Analíticos de Localização & Consolidação
               </h3>
             </div>
-            {(filtroAno !== '2026' || filtroMes !== 'TODOS' || filtroLoja !== 'TODAS' || filtroMedidor !== 'TODOS' || filtroStatus !== '' || buscaMedidor !== '') && (
+            {(filtroEstado !== 'TODOS' || filtroCidade !== 'TODAS' || filtroAno !== '2026' || filtroMes !== 'TODOS' || filtroLoja !== 'TODAS' || filtroMedidor !== 'TODOS' || filtroStatus !== '' || buscaMedidor !== '') && (
               <button
                 onClick={handleLimparFiltros}
                 className="text-[11px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-amber-400/10 cursor-pointer"
@@ -257,36 +334,37 @@ export default function PainelFinanceiro({ onVoltar, perfil = 'ADMIN' }) {
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
-            {/* FILTRO 1: ANO */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 pt-1">
+            {/* FILTRO 1: ESTADO (UF) */}
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
-                🗓️ Ano de Competência
+                🌐 Estado (UF)
               </label>
               <select
-                value={filtroAno}
-                onChange={(e) => setFiltroAno(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-white text-xs font-bold outline-none focus:border-blue-500 transition-all cursor-pointer"
+                value={filtroEstado}
+                onChange={(e) => handleEstadoChange(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-cyan-400 text-xs font-bold outline-none focus:border-cyan-500 transition-all cursor-pointer"
               >
-                {anosDisponiveis.map(a => (
-                  <option key={a} value={a}>{a === 'TODOS' ? 'Todos os Anos' : `Exercício ${a}`}</option>
+                {ESTADOS_DISPONIVEIS.map(uf => (
+                  <option key={uf} value={uf}>{uf === 'TODOS' ? 'Todos os Estados' : `UF: ${uf}`}</option>
                 ))}
               </select>
             </div>
 
-            {/* FILTRO 2: MÊS */}
+            {/* FILTRO 2: CIDADE */}
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
-                📅 Mês de Referência
+                🏙️ Cidade
               </label>
               <select
-                value={filtroMes}
-                onChange={(e) => setFiltroMes(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-blue-400 text-xs font-bold outline-none focus:border-blue-500 transition-all cursor-pointer"
+                value={filtroCidade}
+                onChange={(e) => handleCidadeChange(e.target.value)}
+                disabled={filtroEstado === 'TODOS'}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-cyan-400 text-xs font-bold outline-none focus:border-cyan-500 transition-all cursor-pointer disabled:opacity-50"
               >
-                <option value="TODOS">Todos os Meses (Consolidado)</option>
-                {mesesNomes.map(m => (
-                  <option key={m.num} value={m.num}>{m.num} - {m.nome}</option>
+                <option value="TODAS">{filtroEstado === 'TODOS' ? 'Selecione um Estado' : `Todas as Cidades (${cidadesDisponiveis.length})`}</option>
+                {cidadesDisponiveis.map(c => (
+                  <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             </div>
@@ -295,17 +373,17 @@ export default function PainelFinanceiro({ onVoltar, perfil = 'ADMIN' }) {
             {(perfil === 'ADMIN' || lojas.length > 1) ? (
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
-                  🏢 Unidade / Rede de Lojas
+                  🏢 Unidade / Loja
                 </label>
                 <select
                   value={filtroLoja}
-                  onChange={(e) => setFiltroLoja(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-amber-400 text-xs font-bold outline-none focus:border-blue-500 transition-all cursor-pointer"
+                  onChange={(e) => handleLojaChange(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-amber-400 text-xs font-bold outline-none focus:border-amber-500 transition-all cursor-pointer"
                 >
-                  <option value="TODAS">Todas as Lojas ({lojas.length})</option>
-                  {lojas.map(l => (
+                  <option value="TODAS">Todas as Lojas ({lojasDropdown.length})</option>
+                  {lojasDropdown.map(l => (
                     <option key={l.id} value={l.id.toString()}>
-                      {l.nome_fantasia} {l.nome_rede ? `• [Rede: ${l.nome_rede}]` : ''} {l.eh_matriz ? '⭐ (Matriz)' : ''}
+                      {l.nome_fantasia} {l.nome_rede ? `• [${l.nome_rede}]` : ''}
                     </option>
                   ))}
                 </select>
@@ -324,18 +402,51 @@ export default function PainelFinanceiro({ onVoltar, perfil = 'ADMIN' }) {
             {/* FILTRO 4: MEDIDOR */}
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
-                👷 Medidor Parceiro
+                👷 Medidor
               </label>
               <select
                 value={filtroMedidor}
                 onChange={(e) => setFiltroMedidor(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-emerald-400 text-xs font-bold outline-none focus:border-blue-500 transition-all cursor-pointer"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-emerald-400 text-xs font-bold outline-none focus:border-emerald-500 transition-all cursor-pointer"
               >
-                <option value="TODOS">Todos os Medidores ({medidores.length})</option>
-                {medidores.map(m => (
+                <option value="TODOS">Todos os Medidores ({medidoresDropdown.length})</option>
+                {medidoresDropdown.map(m => (
                   <option key={m.id} value={m.id.toString()}>
                     {m.nome_completo}
                   </option>
+                ))}
+              </select>
+            </div>
+
+            {/* FILTRO 5: ANO */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                🗓️ Ano
+              </label>
+              <select
+                value={filtroAno}
+                onChange={(e) => setFiltroAno(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-white text-xs font-bold outline-none focus:border-blue-500 transition-all cursor-pointer"
+              >
+                {anosDisponiveis.map(a => (
+                  <option key={a} value={a}>{a === 'TODOS' ? 'Todos os Anos' : `Exercício ${a}`}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* FILTRO 6: MÊS */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                📅 Mês
+              </label>
+              <select
+                value={filtroMes}
+                onChange={(e) => setFiltroMes(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-blue-400 text-xs font-bold outline-none focus:border-blue-500 transition-all cursor-pointer"
+              >
+                <option value="TODOS">Todos os Meses</option>
+                {mesesNomes.map(m => (
+                  <option key={m.num} value={m.num}>{m.num} - {m.nome}</option>
                 ))}
               </select>
             </div>

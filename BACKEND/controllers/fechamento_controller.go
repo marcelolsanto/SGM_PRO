@@ -364,6 +364,17 @@ func ListarFechamentos(c *fiber.Ctx) error {
 		query = query.Where("status = ?", status)
 	}
 
+	// 6. Filtro Geográfico (Estado e Cidade)
+	estado := c.Query("estado")
+	if estado != "" && estado != "TODOS" {
+		query = query.Where("id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id JOIN lojas l ON l.id = os.loja_id WHERE l.endereco ILIKE ? OR os.endereco_obra ILIKE ?)", "%- "+estado+"%", "%- "+estado+"%")
+	}
+
+	cidade := c.Query("cidade")
+	if cidade != "" && cidade != "TODAS" {
+		query = query.Where("id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id JOIN lojas l ON l.id = os.loja_id WHERE l.endereco ILIKE ? OR os.endereco_obra ILIKE ?)", "%"+cidade+"%", "%"+cidade+"%")
+	}
+
 	var fechamentos []models.FechamentoMedidor
 	if err := query.Find(&fechamentos).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"erro": "Falha ao listar fechamentos."})

@@ -96,6 +96,26 @@ func ObterEstatisticasAnuais(c *fiber.Ctx) error {
 		q = q.Where("medidor_id = ?", refID)
 	}
 
+	lojaFiltro := c.Query("loja_id")
+	if lojaFiltro != "" && lojaFiltro != "TODAS" && lojaFiltro != "TODOS" {
+		q = q.Where("loja_id = ?", lojaFiltro)
+	}
+
+	medidorFiltro := c.Query("medidor_id")
+	if medidorFiltro != "" && medidorFiltro != "TODOS" {
+		q = q.Where("medidor_id = ?", medidorFiltro)
+	}
+
+	estado := c.Query("estado")
+	if estado != "" && estado != "TODOS" {
+		q = q.Where("(endereco_obra ILIKE ? OR loja_id IN (SELECT id FROM lojas WHERE endereco ILIKE ?))", "%- "+estado+"%", "%- "+estado+"%")
+	}
+
+	cidade := c.Query("cidade")
+	if cidade != "" && cidade != "TODAS" {
+		q = q.Where("(endereco_obra ILIKE ? OR loja_id IN (SELECT id FROM lojas WHERE endereco ILIKE ?))", "%"+cidade+"%", "%"+cidade+"%")
+	}
+
 	if err := q.Group("DATE_TRUNC('month', criado_em)").Order("mes ASC").Scan(&rows).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"erro": "Falha ao calcular estatísticas anuais", "detalhes": err.Error()})
 	}
@@ -198,6 +218,21 @@ func ListarOrdens(c *fiber.Ctx) error {
 	}
 	if statusFiltro != "" && statusFiltro != "TODOS" {
 		query = query.Where("status = ?", statusFiltro)
+	}
+
+	medidorFiltro := c.Query("medidor_id")
+	if medidorFiltro != "" && medidorFiltro != "TODOS" {
+		query = query.Where("medidor_id = ?", medidorFiltro)
+	}
+
+	estado := c.Query("estado")
+	if estado != "" && estado != "TODOS" {
+		query = query.Where("(endereco_obra ILIKE ? OR loja_id IN (SELECT id FROM lojas WHERE endereco ILIKE ?))", "%- "+estado+"%", "%- "+estado+"%")
+	}
+
+	cidade := c.Query("cidade")
+	if cidade != "" && cidade != "TODAS" {
+		query = query.Where("(endereco_obra ILIKE ? OR loja_id IN (SELECT id FROM lojas WHERE endereco ILIKE ?))", "%"+cidade+"%", "%"+cidade+"%")
 	}
 
 	if perfil == "LOJA" {

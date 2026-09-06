@@ -1,6 +1,19 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 
+const ESTADOS_DISPONIVEIS = ['TODOS', 'BA', 'DF', 'GO', 'MG', 'PR', 'RJ', 'RS', 'SP']
+
+const CIDADES_POR_ESTADO = {
+  'BA': ['Salvador'],
+  'DF': ['Brasília'],
+  'GO': ['Goiânia'],
+  'MG': ['Belo Horizonte'],
+  'PR': ['Curitiba'],
+  'RJ': ['Rio de Janeiro'],
+  'RS': ['Porto Alegre'],
+  'SP': ['Campinas', 'São Paulo']
+}
+
 export default function Dashboard({ perfil = 'ADMIN' }) {
   const [ordens, setOrdens] = useState([])
   const [lojas, setLojas] = useState([])
@@ -8,7 +21,9 @@ export default function Dashboard({ perfil = 'ADMIN' }) {
   const [dadosAnuais, setDadosAnuais] = useState(null)
   const [loading, setLoading] = useState(true)
   
-  // 🔥 FILTROS DE ANO, MÊS, LOJA E MEDIDOR 🔥
+  // 🔥 FILTROS CASCATA: ESTADO, CIDADE, LOJA, MEDIDOR, ANO, MÊS 🔥
+  const [filtroEstado, setFiltroEstado] = useState('TODOS')
+  const [filtroCidade, setFiltroCidade] = useState('TODAS')
   const [filtroAno, setFiltroAno] = useState('2026')
   const [filtroMes, setFiltroMes] = useState('TODOS')
   const [filtroLoja, setFiltroLoja] = useState('TODAS')
@@ -29,16 +44,34 @@ export default function Dashboard({ perfil = 'ADMIN' }) {
     { num: '12', nome: 'Dezembro' }
   ]
 
-  const anosDisponiveis = ['TODOS', '2026', '2025']
+  const anosDisponiveis = ['TODOS', '2026', '2025', '2024']
 
   const carregarDados = async () => {
     setLoading(true)
     try {
+      const params = new URLSearchParams()
+      if (filtroAno && filtroAno !== 'TODOS') params.append('ano', filtroAno)
+      if (filtroMes && filtroMes !== 'TODOS') params.append('mes', filtroMes)
+      if (filtroLoja && filtroLoja !== 'TODAS' && filtroLoja !== 'TODOS') params.append('loja_id', filtroLoja)
+      if (filtroMedidor && filtroMedidor !== 'TODOS') params.append('medidor_id', filtroMedidor)
+      if (filtroEstado && filtroEstado !== 'TODOS') params.append('estado', filtroEstado)
+      if (filtroCidade && filtroCidade !== 'TODAS' && filtroCidade !== 'TODOS') params.append('cidade', filtroCidade)
+
+      const qs = params.toString() ? `?${params.toString()}` : ''
+
+      const estatAno = filtroAno === 'TODOS' ? '2026' : filtroAno
+      const paramsEstat = new URLSearchParams()
+      paramsEstat.append('ano', estatAno)
+      if (filtroLoja && filtroLoja !== 'TODAS' && filtroLoja !== 'TODOS') paramsEstat.append('loja_id', filtroLoja)
+      if (filtroMedidor && filtroMedidor !== 'TODOS') paramsEstat.append('medidor_id', filtroMedidor)
+      if (filtroEstado && filtroEstado !== 'TODOS') paramsEstat.append('estado', filtroEstado)
+      if (filtroCidade && filtroCidade !== 'TODAS' && filtroCidade !== 'TODOS') paramsEstat.append('cidade', filtroCidade)
+
       const [resOs, resLojas, resMedidores, resAnual] = await Promise.all([
-        axios.get(`/api/os?ano=${filtroAno}&mes=${filtroMes}`),
+        axios.get(`/api/os${qs}`),
         axios.get('/api/lojas'),
         axios.get('/api/medidores'),
-        axios.get(`/api/estatisticas/anual?ano=${filtroAno === 'TODOS' ? '2026' : filtroAno}`)
+        axios.get(`/api/estatisticas/anual?${paramsEstat.toString()}`)
       ])
       setOrdens(resOs.data || [])
       setLojas(resLojas.data || [])
@@ -53,7 +86,79 @@ export default function Dashboard({ perfil = 'ADMIN' }) {
 
   useEffect(() => {
     carregarDados()
-  }, [filtroAno, filtroMes])
+  }, [filtroAno, filtroMes, filtroLoja, filtroMedidor, filtroEstado, filtroCidade])
+
+  const handleEstadoChange = (novoEstado) => {
+    setFiltroEstado(novoEstado)
+    setFiltroCidade('TODAS')
+    setFiltroLoja('TODAS')
+    setFiltroMedidor('TODOS')
+  }
+
+  const handleCidadeChange = (novaCidade) => {
+    setFiltroCidade(novaCidade)
+    setFiltroLoja('TODAS')
+    setFiltroMedidor('TODOS')
+  }
+
+  const handleLojaChange = (novaLoja) => {
+    setFiltroLoja(novaLoja)
+    setFiltroMedidor('TODOS')
+  }
+
+  const limparFiltros = () => {
+    setFiltroEstado('TODOS')
+    setFiltroCidade('TODAS')
+    setFiltroLoja('TODAS')
+    setFiltroMedidor('TODOS')
+    setFiltroAno('2026')
+    setFiltroMes('TODOS')
+  }
+
+  const cidadesDisponiveis = filtroEstado !== 'TODOS' ? (CIDADES_POR_ESTADO[filtroEstado] || []) : []
+
+  // Filtragem cascata de lojas
+  const lojasDropdown = lojas.filter(l => {
+    const end = (l.endereco || '').toUpperCase()
+    if (filtroEstado !== 'TODOS') {
+      const temUf = end.includes(`- ${filtroEstado}`) || end.includes(`/${filtroEstado}`) || end.endsWith(` ${filtroEstado}`)
+      if (!temUf) return false
+    }
+    if (filtroCidade !== 'TODAS') {
+      const endOrig = (l.endereco || '').toLowerCase()
+      if (!endOrig.includes(filtroCidade.toLowerCase())) return false
+    }
+    return true
+  })
+
+  // Filtragem cascata de medidores
+  const medidoresDropdown = medidores.filter(m => {
+    if (filtroLoja !== 'TODAS' && filtroLoja !== 'TODOS') {
+      if (m.loja_vinculada_id && m.loja_vinculada_id.toString() === filtroLoja) return true
+      const fezOSNaLoja = ordens.some(o => o.loja_id?.toString() === filtroLoja && o.medidor_id?.toString() === m.id?.toString())
+      if (fezOSNaLoja) return true
+      if (m.loja_vinculada_id && m.loja_vinculada_id.toString() !== filtroLoja) return false
+    }
+    const end = (m.endereco || '').toUpperCase()
+    if (filtroEstado !== 'TODOS') {
+      const temUf = end.includes(`- ${filtroEstado}`) || end.includes(`/${filtroEstado}`) || end.endsWith(` ${filtroEstado}`)
+      const isDF = filtroEstado === 'DF' && (end.includes('DF') || end.includes('BRASÍLIA') || end.includes('BRASILIA') || end.includes('TAGUATINGA') || end.includes('CEILÂNDIA') || end.includes('SOBRADINHO') || end.includes('ASA NORTE') || end.includes('ASA SUL') || end.includes('LAGO NORTE') || end.includes('LAGO SUL') || end.includes('GUARA'))
+      if (!temUf && !isDF) {
+        const temOSNoEstado = ordens.some(o => o.medidor_id?.toString() === m.id?.toString())
+        if (!temOSNoEstado) return false
+      }
+    }
+    if (filtroCidade !== 'TODAS') {
+      const endOrig = (m.endereco || '').toLowerCase()
+      const matchCidade = endOrig.includes(filtroCidade.toLowerCase())
+      const matchDFFallback = filtroCidade === 'Brasília' && (endOrig.includes('df') || endOrig.includes('sobradinho') || endOrig.includes('taguatinga') || endOrig.includes('ceilândia') || endOrig.includes('guará') || endOrig.includes('lago'))
+      if (!matchCidade && !matchDFFallback) {
+        const temOSNaCidade = ordens.some(o => o.medidor_id?.toString() === m.id?.toString())
+        if (!temOSNaCidade) return false
+      }
+    }
+    return true
+  })
 
   const formatarMoeda = (v) => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -61,8 +166,8 @@ export default function Dashboard({ perfil = 'ADMIN' }) {
   // FILTRAGEM DE ORDENS
   // ==========================================
   const ordensFiltradas = ordens.filter(os => {
-    const passaLoja = filtroLoja === 'TODAS' || os.loja_id.toString() === filtroLoja
-    const passaMedidor = filtroMedidor === 'TODOS' || (os.medidor_id && os.medidor_id.toString() === filtroMedidor)
+    const passaLoja = filtroLoja === 'TODAS' || os.loja_id?.toString() === filtroLoja
+    const passaMedidor = filtroMedidor === 'TODOS' || (os.medidor_id && os.medidor_id?.toString() === filtroMedidor)
     return passaLoja && passaMedidor
   })
 
@@ -77,7 +182,6 @@ export default function Dashboard({ perfil = 'ADMIN' }) {
   const urgencias = ordensFiltradas.filter(os => os.urgencia).length
 
   // Comparativo de Economia com Terceirização (Custo equivalente de equipe própria CLT)
-  // R$ 580/medição incluindo veículo, combustível, salário base R$ 2.800, 70% encargos, seguro e ociosidade
   const custoCLTEstimado = ordensFiltradas.length * 580.0
   const economiaGerada = Math.max(0, custoCLTEstimado - faturamentoTotalLojas)
   const percentualEconomia = custoCLTEstimado > 0 ? ((economiaGerada / custoCLTEstimado) * 100).toFixed(1) : '0'
@@ -106,66 +210,122 @@ export default function Dashboard({ perfil = 'ADMIN' }) {
           </button>
         </div>
         
-        {/* BARRA DE FILTROS: ANO, MÊS, LOJA, MEDIDOR */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mt-6 bg-slate-900/60 p-4 rounded-2xl border border-slate-800 shadow-xl">
-          
-          {/* FILTRO 1: ANO */}
-          <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🗓️ Ano de Referência</label>
-            <select 
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-white outline-none focus:border-blue-500 font-bold text-sm" 
-              value={filtroAno} 
-              onChange={(e) => setFiltroAno(e.target.value)}
-            >
-              {anosDisponiveis.map(a => <option key={a} value={a}>{a === 'TODOS' ? 'Todos os Anos' : `Ano ${a}`}</option>)}
-            </select>
-          </div>
-
-          {/* FILTRO 2: MÊS */}
-          <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">📅 Mês do Ano</label>
-            <select 
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-blue-400 outline-none focus:border-blue-500 font-bold text-sm" 
-              value={filtroMes} 
-              onChange={(e) => setFiltroMes(e.target.value)}
-            >
-              <option value="TODOS">Todos os Meses</option>
-              {mesesNomes.map(m => <option key={m.num} value={m.num}>{m.num} - {m.nome}</option>)}
-            </select>
-          </div>
-
-          {/* FILTRO 3: LOJA OU REDE */}
-          {(perfil === 'ADMIN' || lojas.length > 1) && (
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🏢 Unidade / Rede de Lojas</label>
-              <select 
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-amber-400 outline-none focus:border-blue-500 font-bold text-sm" 
-                value={filtroLoja} 
-                onChange={(e) => setFiltroLoja(e.target.value)}
+        {/* BARRA DE FILTROS CASCATA: ESTADO, CIDADE, LOJA, MEDIDOR, ANO, MÊS */}
+        <div className="bg-slate-900/80 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-xl mt-6 space-y-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800/80 pb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-base">📍</span>
+              <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-wider">
+                Filtros de Localização, Loja, Medidor e Período
+              </h3>
+            </div>
+            {(filtroEstado !== 'TODOS' || filtroCidade !== 'TODAS' || filtroLoja !== 'TODAS' || filtroMedidor !== 'TODOS' || filtroAno !== '2026' || filtroMes !== 'TODOS') && (
+              <button
+                onClick={limparFiltros}
+                className="text-[11px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-amber-400/10 cursor-pointer"
               >
-                <option value="TODAS">Todas as Lojas & Redes ({lojas.length})</option>
-                {lojas.map(l => (
-                  <option key={l.id} value={l.id.toString()}>
-                    {l.nome_fantasia} {l.nome_rede ? `• [Rede: ${l.nome_rede}]` : ''} {l.eh_matriz ? '⭐ (Matriz)' : ''}
-                  </option>
+                <span>🔄</span> Limpar Filtros
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 pt-1">
+            {/* FILTRO 1: ESTADO (UF) */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🌐 Estado (UF)</label>
+              <select
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-cyan-400 font-bold text-xs outline-none focus:border-cyan-500 cursor-pointer"
+                value={filtroEstado}
+                onChange={(e) => handleEstadoChange(e.target.value)}
+              >
+                {ESTADOS_DISPONIVEIS.map(uf => (
+                  <option key={uf} value={uf}>{uf === 'TODOS' ? 'Todos os Estados' : `UF: ${uf}`}</option>
                 ))}
               </select>
             </div>
-          )}
 
-          {/* FILTRO 4: MEDIDOR */}
-          <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">👷 Filtrar Medidor</label>
-            <select 
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-emerald-400 outline-none focus:border-blue-500 font-bold text-sm" 
-              value={filtroMedidor} 
-              onChange={(e) => setFiltroMedidor(e.target.value)}
-            >
-              <option value="TODOS">Todos os Medidores ({medidores.length})</option>
-              {medidores.map(m => <option key={m.id} value={m.id.toString()}>{m.nome_completo}</option>)}
-            </select>
+            {/* FILTRO 2: CIDADE */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🏙️ Cidade</label>
+              <select
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-cyan-400 font-bold text-xs outline-none focus:border-cyan-500 cursor-pointer disabled:opacity-50"
+                value={filtroCidade}
+                onChange={(e) => handleCidadeChange(e.target.value)}
+                disabled={filtroEstado === 'TODOS'}
+              >
+                <option value="TODAS">{filtroEstado === 'TODOS' ? 'Selecione um Estado' : `Todas as Cidades (${cidadesDisponiveis.length})`}</option>
+                {cidadesDisponiveis.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* FILTRO 3: LOJA OU REDE */}
+            {(perfil === 'ADMIN' || lojas.length > 1) ? (
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🏢 Unidade / Loja</label>
+                <select
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-amber-400 font-bold text-xs outline-none focus:border-amber-500 cursor-pointer"
+                  value={filtroLoja}
+                  onChange={(e) => handleLojaChange(e.target.value)}
+                >
+                  <option value="TODAS">Todas as Lojas ({lojasDropdown.length})</option>
+                  {lojasDropdown.map(l => (
+                    <option key={l.id} value={l.id.toString()}>
+                      {l.nome_fantasia} {l.nome_rede ? `• [${l.nome_rede}]` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🏢 Unidade</label>
+                <div className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-slate-400 font-bold text-xs truncate">
+                  {lojas[0]?.nome_fantasia || 'Minha Loja'}
+                </div>
+              </div>
+            )}
+
+            {/* FILTRO 4: MEDIDOR */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">👷 Medidor</label>
+              <select
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-emerald-400 font-bold text-xs outline-none focus:border-emerald-500 cursor-pointer"
+                value={filtroMedidor}
+                onChange={(e) => setFiltroMedidor(e.target.value)}
+              >
+                <option value="TODOS">Todos os Medidores ({medidoresDropdown.length})</option>
+                {medidoresDropdown.map(m => (
+                  <option key={m.id} value={m.id.toString()}>{m.nome_completo}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* FILTRO 5: ANO */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">🗓️ Ano</label>
+              <select
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-white font-bold text-xs outline-none focus:border-blue-500 cursor-pointer"
+                value={filtroAno}
+                onChange={(e) => setFiltroAno(e.target.value)}
+              >
+                {anosDisponiveis.map(a => <option key={a} value={a}>{a === 'TODOS' ? 'Todos os Anos' : `Ano ${a}`}</option>)}
+              </select>
+            </div>
+
+            {/* FILTRO 6: MÊS */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">📅 Mês</label>
+              <select
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-blue-400 font-bold text-xs outline-none focus:border-blue-500 cursor-pointer"
+                value={filtroMes}
+                onChange={(e) => setFiltroMes(e.target.value)}
+              >
+                <option value="TODOS">Todos os Meses</option>
+                {mesesNomes.map(m => <option key={m.num} value={m.num}>{m.num} - {m.nome}</option>)}
+              </select>
+            </div>
           </div>
-
         </div>
       </header>
 

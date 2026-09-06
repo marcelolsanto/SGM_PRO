@@ -13,7 +13,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// ObterFluxoCaixa retorna o DRE operacional, fluxo de caixa e saldo consolidado com filtros
+// ObterFluxoCaixa retorna o DRE operacional, fluxo de caixa e saldo consolidado com filtros avançados
 func ObterFluxoCaixa(c *fiber.Ctx) error {
 	perfil, refID := getPerfilERefID(c)
 	redeID := getRedeID(c)
@@ -22,6 +22,8 @@ func ObterFluxoCaixa(c *fiber.Ctx) error {
 	mesStr := c.Query("mes", "TODOS")
 	lojaIDStr := c.Query("loja_id", "TODAS")
 	medidorIDStr := c.Query("medidor_id", "TODOS")
+	estadoStr := c.Query("estado", "TODOS")
+	cidadeStr := c.Query("cidade", "TODAS")
 
 	ano := time.Now().Year()
 	if a, err := strconv.Atoi(anoStr); err == nil && a > 2000 {
@@ -53,7 +55,7 @@ func ObterFluxoCaixa(c *fiber.Ctx) error {
 	// Filtro multi-tenant de loja/rede
 	if perfil == "LOJA" {
 		if redeID > 0 {
-			if lojaIDStr != "" && lojaIDStr != "TODAS" {
+			if lojaIDStr != "" && lojaIDStr != "TODAS" && lojaIDStr != "TODOS" {
 				qOS = qOS.Where("loja_id = ? AND loja_id IN (SELECT id FROM lojas WHERE rede_id = ? OR id = ?)", lojaIDStr, redeID, refID)
 			} else {
 				qOS = qOS.Where("loja_id IN (SELECT id FROM lojas WHERE rede_id = ? OR id = ?)", redeID, refID)
@@ -62,7 +64,7 @@ func ObterFluxoCaixa(c *fiber.Ctx) error {
 			qOS = qOS.Where("loja_id = ?", refID)
 		}
 	} else {
-		if lojaIDStr != "" && lojaIDStr != "TODAS" {
+		if lojaIDStr != "" && lojaIDStr != "TODAS" && lojaIDStr != "TODOS" {
 			qOS = qOS.Where("loja_id = ?", lojaIDStr)
 		}
 	}
@@ -76,6 +78,14 @@ func ObterFluxoCaixa(c *fiber.Ctx) error {
 		}
 	}
 
+	// Filtro geográfico (Estado e Cidade)
+	if estadoStr != "" && estadoStr != "TODOS" {
+		qOS = qOS.Where("(endereco_obra ILIKE ? OR loja_id IN (SELECT id FROM lojas WHERE endereco ILIKE ?))", "%- "+estadoStr+"%", "%- "+estadoStr+"%")
+	}
+	if cidadeStr != "" && cidadeStr != "TODAS" {
+		qOS = qOS.Where("(endereco_obra ILIKE ? OR loja_id IN (SELECT id FROM lojas WHERE endereco ILIKE ?))", "%"+cidadeStr+"%", "%"+cidadeStr+"%")
+	}
+
 	qOS.Group("EXTRACT(MONTH FROM criado_em)").Scan(&resumos)
 
 	// 2. Consulta de Lançamentos Financeiros (Saídas / Repasses / Despesas / Entradas Manuais)
@@ -83,7 +93,7 @@ func ObterFluxoCaixa(c *fiber.Ctx) error {
 
 	if perfil == "LOJA" {
 		if redeID > 0 {
-			if lojaIDStr != "" && lojaIDStr != "TODAS" {
+			if lojaIDStr != "" && lojaIDStr != "TODAS" && lojaIDStr != "TODOS" {
 				qLanc = qLanc.Where("(loja_id = ? OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id = ?))", lojaIDStr, lojaIDStr)
 			} else {
 				qLanc = qLanc.Where("(loja_id IN (SELECT id FROM lojas WHERE rede_id = ? OR id = ?) OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id IN (SELECT id FROM lojas WHERE rede_id = ? OR id = ?)))", redeID, refID, redeID, refID)
@@ -92,7 +102,7 @@ func ObterFluxoCaixa(c *fiber.Ctx) error {
 			qLanc = qLanc.Where("(loja_id = ? OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id = ?))", refID, refID)
 		}
 	} else {
-		if lojaIDStr != "" && lojaIDStr != "TODAS" {
+		if lojaIDStr != "" && lojaIDStr != "TODAS" && lojaIDStr != "TODOS" {
 			qLanc = qLanc.Where("(loja_id = ? OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id = ?))", lojaIDStr, lojaIDStr)
 		}
 	}
@@ -103,6 +113,13 @@ func ObterFluxoCaixa(c *fiber.Ctx) error {
 		if medidorIDStr != "" && medidorIDStr != "TODOS" {
 			qLanc = qLanc.Where("fechamento_medidor_id IN (SELECT id FROM fechamento_medidores WHERE medidor_id = ?)", medidorIDStr)
 		}
+	}
+
+	if estadoStr != "" && estadoStr != "TODOS" {
+		qLanc = qLanc.Where("(loja_id IN (SELECT id FROM lojas WHERE endereco ILIKE ?) OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.endereco_obra ILIKE ?))", "%- "+estadoStr+"%", "%- "+estadoStr+"%")
+	}
+	if cidadeStr != "" && cidadeStr != "TODAS" {
+		qLanc = qLanc.Where("(loja_id IN (SELECT id FROM lojas WHERE endereco ILIKE ?) OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.endereco_obra ILIKE ?))", "%"+cidadeStr+"%", "%"+cidadeStr+"%")
 	}
 
 	var lancamentos []models.LancamentoFinanceiro
@@ -155,6 +172,8 @@ func ObterFluxoCaixa(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"ano":               ano,
 		"mes_filtrado":      mesStr,
+		"estado_filtrado":   estadoStr,
+		"cidade_filtrada":   cidadeStr,
 		"total_entradas":    math.Round(totalEntradas*100) / 100,
 		"total_saidas":      math.Round(totalSaidas*100) / 100,
 		"lucro_liquido":     math.Round(lucroLiquido*100) / 100,
@@ -185,7 +204,7 @@ func ListarLancamentos(c *fiber.Ctx) error {
 	lojaIDStr := c.Query("loja_id")
 	if perfil == "LOJA" {
 		if redeID > 0 {
-			if lojaIDStr != "" && lojaIDStr != "TODAS" {
+			if lojaIDStr != "" && lojaIDStr != "TODAS" && lojaIDStr != "TODOS" {
 				query = query.Where("(loja_id = ? OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id = ?))", lojaIDStr, lojaIDStr)
 			} else {
 				query = query.Where("(loja_id IN (SELECT id FROM lojas WHERE rede_id = ? OR id = ?) OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id IN (SELECT id FROM lojas WHERE rede_id = ? OR id = ?)))", redeID, refID, redeID, refID)
@@ -194,7 +213,7 @@ func ListarLancamentos(c *fiber.Ctx) error {
 			query = query.Where("(loja_id = ? OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id = ?))", refID, refID)
 		}
 	} else {
-		if lojaIDStr != "" && lojaIDStr != "TODAS" {
+		if lojaIDStr != "" && lojaIDStr != "TODAS" && lojaIDStr != "TODOS" {
 			query = query.Where("(loja_id = ? OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id = ?))", lojaIDStr, lojaIDStr)
 		}
 	}
@@ -206,6 +225,16 @@ func ListarLancamentos(c *fiber.Ctx) error {
 		if medidorIDStr != "" && medidorIDStr != "TODOS" {
 			query = query.Where("fechamento_medidor_id IN (SELECT id FROM fechamento_medidores WHERE medidor_id = ?)", medidorIDStr)
 		}
+	}
+
+	estadoStr := c.Query("estado")
+	if estadoStr != "" && estadoStr != "TODOS" {
+		query = query.Where("(loja_id IN (SELECT id FROM lojas WHERE endereco ILIKE ?) OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.endereco_obra ILIKE ?))", "%- "+estadoStr+"%", "%- "+estadoStr+"%")
+	}
+
+	cidadeStr := c.Query("cidade")
+	if cidadeStr != "" && cidadeStr != "TODAS" {
+		query = query.Where("(loja_id IN (SELECT id FROM lojas WHERE endereco ILIKE ?) OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.endereco_obra ILIKE ?))", "%"+cidadeStr+"%", "%"+cidadeStr+"%")
 	}
 
 	if tipo := c.Query("tipo"); tipo != "" && tipo != "TODOS" {
@@ -310,7 +339,7 @@ func ExportarRelatorioContabil(c *fiber.Ctx) error {
 	lojaIDStr := c.Query("loja_id")
 	if perfil == "LOJA" {
 		if redeID > 0 {
-			if lojaIDStr != "" && lojaIDStr != "TODAS" {
+			if lojaIDStr != "" && lojaIDStr != "TODAS" && lojaIDStr != "TODOS" {
 				query = query.Where("(loja_id = ? OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id = ?))", lojaIDStr, lojaIDStr)
 			} else {
 				query = query.Where("(loja_id IN (SELECT id FROM lojas WHERE rede_id = ? OR id = ?) OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id IN (SELECT id FROM lojas WHERE rede_id = ? OR id = ?)))", redeID, refID, redeID, refID)
@@ -319,7 +348,7 @@ func ExportarRelatorioContabil(c *fiber.Ctx) error {
 			query = query.Where("(loja_id = ? OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id = ?))", refID, refID)
 		}
 	} else {
-		if lojaIDStr != "" && lojaIDStr != "TODAS" {
+		if lojaIDStr != "" && lojaIDStr != "TODAS" && lojaIDStr != "TODOS" {
 			query = query.Where("(loja_id = ? OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id = ?))", lojaIDStr, lojaIDStr)
 		}
 	}
@@ -331,6 +360,16 @@ func ExportarRelatorioContabil(c *fiber.Ctx) error {
 		if medidorIDStr != "" && medidorIDStr != "TODOS" {
 			query = query.Where("fechamento_medidor_id IN (SELECT id FROM fechamento_medidores WHERE medidor_id = ?)", medidorIDStr)
 		}
+	}
+
+	estadoStr := c.Query("estado")
+	if estadoStr != "" && estadoStr != "TODOS" {
+		query = query.Where("(loja_id IN (SELECT id FROM lojas WHERE endereco ILIKE ?) OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.endereco_obra ILIKE ?))", "%- "+estadoStr+"%", "%- "+estadoStr+"%")
+	}
+
+	cidadeStr := c.Query("cidade")
+	if cidadeStr != "" && cidadeStr != "TODAS" {
+		query = query.Where("(loja_id IN (SELECT id FROM lojas WHERE endereco ILIKE ?) OR fechamento_medidor_id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.endereco_obra ILIKE ?))", "%"+cidadeStr+"%", "%"+cidadeStr+"%")
 	}
 
 	var lancamentos []models.LancamentoFinanceiro
@@ -362,6 +401,12 @@ func ExportarRelatorioContabil(c *fiber.Ctx) error {
 	}
 
 	nomeArquivo := "relatorio_contabil_sgm_pro"
+	if estadoStr != "" && estadoStr != "TODOS" {
+		nomeArquivo += "_" + estadoStr
+	}
+	if cidadeStr != "" && cidadeStr != "TODAS" {
+		nomeArquivo += "_" + strings.ReplaceAll(cidadeStr, " ", "_")
+	}
 	if anoStr != "" && anoStr != "TODOS" {
 		nomeArquivo += "_" + anoStr
 	}
