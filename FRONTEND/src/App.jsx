@@ -2,34 +2,23 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import Dashboard from './views/Dashboard'
 import Operacoes from './views/Operacoes'
+import TorreControle from './views/TorreControle'
 import Admin from './views/Admin'
 import PainelFinanceiro from './views/PainelFinanceiro'
 import MagicLink from './views/MagicLink'
 import Login from './views/Login'
 import PortalUsuario from './views/PortalUsuario'
 import ResetarSenha from './views/ResetarSenha'
-import TermosModal from './components/TermosModal'
-
-// Configuração imediata do token para evitar 401 nas primeiras chamadas dos componentes filhos
-const tokenSalvo = typeof window !== 'undefined' ? localStorage.getItem('sgm_token') : null
-if (tokenSalvo) {
-  axios.defaults.headers.common['Authorization'] = `Bearer ${tokenSalvo}`
-}
-
-axios.interceptors.request.use((config) => {
-  const t = typeof window !== 'undefined' ? localStorage.getItem('sgm_token') : null
-  if (t) {
-    config.headers = config.headers || {}
-    config.headers['Authorization'] = `Bearer ${t}`
-  }
-  return config
-})
+import LandingPage from './views/LandingPage'
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('sgm_token') || null)
   const [usuario, setUsuario] = useState(localStorage.getItem('sgm_usuario') || '')
   const [menuAberto, setMenuAberto] = useState(false)
-  const [termosAberto, setTermosAberto] = useState(false)
+  const [telaPublica, setTelaPublica] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.pathname === '/login') return 'login'
+    return 'landing'
+  })
 
   const parseJwt = (t) => { try { return JSON.parse(atob(t.split('.')[1])) } catch (e) { return null } }
   const tokenData = token ? parseJwt(token) : null
@@ -46,31 +35,43 @@ function App() {
   const fazerLogout = () => {
     localStorage.removeItem('sgm_token'); localStorage.removeItem('sgm_usuario')
     setToken(null); setUsuario('')
+    setTelaPublica('landing')
   }
 
   useEffect(() => {
     if (perfil === 'MEDIDOR') setAbaAtiva('operacoes')
   }, [perfil])
 
-  // Captura o token na barra de endereços do navegador de forma segura
-  const clienteMatch = window.location.pathname.match(/^\/cliente\/([^/?#]+)/)
-  if (clienteMatch) return <MagicLink token={clienteMatch[1]} />
+  // Roteamento do Link Mágico do Cliente
+  if (window.location.pathname.startsWith('/cliente/')) return <MagicLink token={window.location.pathname.split('/').pop()} />
   
-  const resetMatch = window.location.pathname.match(/^\/resetar-senha\/([^/?#]+)/)
-  if (resetMatch) return <ResetarSenha token={resetMatch[1]} />
-  if (!token) return <Login setToken={setToken} setUsuario={setUsuario} />
+  // Roteamento de Redefinição de Senha
+  if (window.location.pathname.startsWith('/resetar-senha/')) return <ResetarSenha token={window.location.pathname.split('/').pop()} />
+  
+  // Roteamento Público (Sem Login): Alterna entre Landing Page e Login
+  if (!token) {
+    if (telaPublica === 'login') {
+      return <Login setToken={setToken} setUsuario={setUsuario} onVoltarLanding={() => setTelaPublica('landing')} />
+    }
+    return <LandingPage onIrParaLogin={() => setTelaPublica('login')} />
+  }
 
   const menuAdmin = [
     { id: 'dashboard', icon: '📊', label: 'Visão Geral (BI)' },
+    { id: 'campo', icon: '🗺️', label: 'Torre de Controle (Campo)' },
     { id: 'operacoes', icon: '🛠️', label: 'Gestão de Operações' },
     { id: 'financeiro', icon: '🏦', label: 'Financeiro & Contábil' },
-    { id: 'admin', icon: '⚙️', label: 'Cadastros Base' }
+    { id: 'admin', icon: '⚙️', label: 'Cadastros Base' },
+    { id: 'institucional', icon: '🌐', label: 'Site Institucional' }
   ]
   
   const menuLoja = [
     { id: 'dashboard', icon: '📊', label: 'Meus Resultados' },
+    { id: 'campo', icon: '🗺️', label: 'Torre de Controle (Campo)' },
     { id: 'operacoes', icon: '📋', label: 'Minhas Medições' },
-    { id: 'admin', icon: '⚙️', label: 'Meus Cadastros' }
+    { id: 'financeiro', icon: '🏦', label: 'Auditoria & Pagamento' },
+    { id: 'admin', icon: '⚙️', label: 'Meus Cadastros' },
+    { id: 'institucional', icon: '🌐', label: 'Site Institucional' }
   ]
   
   const menuAtual = perfil === 'ADMIN' ? menuAdmin : (perfil === 'LOJA' ? menuLoja : [])
@@ -80,11 +81,18 @@ function App() {
       
       <div className="md:hidden flex items-center justify-between p-4 bg-slate-900 border-b border-slate-800 fixed w-full top-0 z-50">
         <h1 className="text-xl font-black text-white italic tracking-tighter">SGM<span className="text-blue-600">.PRO</span></h1>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setTermosAberto(true)} className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded-lg font-bold border border-slate-700">⚖️ Termos</button>
-          {perfil !== 'MEDIDOR' && <button onClick={() => setMenuAberto(!menuAberto)} className="text-2xl text-slate-400">☰</button>}
-          {perfil === 'MEDIDOR' && <button onClick={fazerLogout} className="text-xs bg-red-500/10 text-red-400 px-3 py-1.5 rounded-lg font-bold">Sair</button>}
-        </div>
+        {perfil !== 'MEDIDOR' && <button onClick={() => setMenuAberto(!menuAberto)} className="text-2xl text-slate-400">☰</button>}
+        {perfil === 'MEDIDOR' && (
+          <div className="flex items-center gap-2">
+            <button onClick={() => setAbaAtiva(abaAtiva === 'campo' ? 'operacoes' : 'campo')} className="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-lg font-bold flex items-center gap-1">
+              {abaAtiva === 'campo' ? '🛵 Minha Rota' : '🗺️ Torre de Controle'}
+            </button>
+            <button onClick={() => setAbaAtiva(abaAtiva === 'institucional' ? 'operacoes' : 'institucional')} className="text-xs bg-blue-600/20 text-blue-400 px-3 py-1 rounded-lg font-bold">
+              {abaAtiva === 'institucional' ? 'Minhas OSs' : '🌐 Planos'}
+            </button>
+            <button onClick={fazerLogout} className="text-xs bg-red-500/10 text-red-400 px-3 py-1 rounded-lg font-bold">Sair</button>
+          </div>
+        )}
       </div>
 
       {perfil !== 'MEDIDOR' && (
@@ -100,13 +108,6 @@ function App() {
                 <span className="text-xl">{item.icon}</span> <span className="text-sm">{item.label}</span>
               </button>
             ))}
-
-            <button 
-              onClick={() => { setTermosAberto(true); setMenuAberto(false); }}
-              className="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-all text-left"
-            >
-              <span className="text-xl">⚖️</span> <span className="text-sm font-medium">Termos & Garantias</span>
-            </button>
           </nav>
 
           <div className="mt-auto bg-slate-950 p-4 rounded-[1.5rem] border border-slate-800/50">
@@ -126,20 +127,22 @@ function App() {
 
       <main className="flex-1 p-4 md:p-10 overflow-y-auto mt-[69px] md:mt-0 h-[calc(100vh-69px)] md:h-screen custom-scrollbar relative">
         <div className="max-w-7xl mx-auto pb-20 md:pb-0 h-full">
+          {abaAtiva === 'institucional' && <LandingPage onIrParaLogin={() => setAbaAtiva('dashboard')} />}
+
           {perfil === 'ADMIN' && abaAtiva === 'dashboard' && <Dashboard perfil={perfil} />}
+          {abaAtiva === 'campo' && <TorreControle perfil={perfil} setToken={setToken} />}
           {perfil === 'ADMIN' && abaAtiva === 'operacoes' && <Operacoes />}
           {perfil === 'ADMIN' && abaAtiva === 'financeiro' && <PainelFinanceiro onVoltar={() => setAbaAtiva('dashboard')} />}
           {perfil === 'ADMIN' && abaAtiva === 'admin' && <Admin perfil={perfil} refId={refId} />}
 
           {perfil === 'LOJA' && abaAtiva === 'dashboard' && <Dashboard perfil={perfil} />}
           {perfil === 'LOJA' && abaAtiva === 'operacoes' && <PortalUsuario perfil={perfil} refId={refId} setToken={setToken} />}
+          {perfil === 'LOJA' && abaAtiva === 'financeiro' && <PainelFinanceiro onVoltar={() => setAbaAtiva('operacoes')} />}
           {perfil === 'LOJA' && abaAtiva === 'admin' && <Admin perfil={perfil} refId={refId} />}
 
-          {perfil === 'MEDIDOR' && <PortalUsuario perfil={perfil} refId={refId} setToken={setToken} />}
+          {perfil === 'MEDIDOR' && abaAtiva !== 'institucional' && abaAtiva !== 'campo' && <PortalUsuario perfil={perfil} refId={refId} setToken={setToken} />}
         </div>
       </main>
-
-      <TermosModal isOpen={termosAberto} onClose={() => setTermosAberto(false)} />
     </div>
   )
 }

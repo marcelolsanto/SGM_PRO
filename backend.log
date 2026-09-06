@@ -1,0 +1,4 @@
+2026/09/05 22:36:36 ✅ Banco de dados PostgreSQL conectado com sucesso!
+2026/09/05 22:36:36 🚀 Servidor SGM_PRO rodando na porta 8080...
+2026/09/05 22:36:36 failed to listen: listen tcp4 :8080: bind: address already in use
+exit status 1

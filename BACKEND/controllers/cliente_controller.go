@@ -16,6 +16,10 @@ func CriarCliente(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"erro": "Dados inválidos"})
 	}
 
+	if cl.Nome == "" {
+		return c.Status(400).JSON(fiber.Map{"erro": "O nome do cliente é obrigatório"})
+	}
+
 	if perfil == "LOJA" {
 		cl.LojaID = refID
 		if redeID > 0 {
