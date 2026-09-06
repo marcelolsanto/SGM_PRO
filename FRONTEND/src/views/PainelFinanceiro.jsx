@@ -8,6 +8,7 @@ export default function PainelFinanceiro({ onVoltar }) {
   const [fluxoCaixa, setFluxoCaixa] = useState(null)
   const [lancamentos, setLancamentos] = useState([])
   const [loading, setLoading] = useState(true)
+  const [gerandoLotes, setGerandoLotes] = useState(false)
 
   // Filtros de Lotes
   const [filtroStatus, setFiltroStatus] = useState('')
@@ -53,6 +54,20 @@ export default function PainelFinanceiro({ onVoltar }) {
 
   const handleLoteAtualizado = () => {
     carregarDados()
+  }
+
+  const handleGerarAutomatico = async () => {
+    if (!window.confirm('Deseja compilar e gerar os lotes de fechamento automaticamente para todas as medições concluídas do ciclo?')) return
+    setGerandoLotes(true)
+    try {
+      const res = await axios.post('/api/fechamentos/gerar-automatico')
+      alert(res.data?.mensagem || 'Lotes compilados com sucesso!')
+      carregarDados()
+    } catch (err) {
+      alert('Erro ao gerar lotes automáticos: ' + (err.response?.data?.erro || err.message))
+    } finally {
+      setGerandoLotes(false)
+    }
   }
 
   const salvarLancamentoManual = async (e) => {
@@ -244,6 +259,15 @@ export default function PainelFinanceiro({ onVoltar }) {
                   <option value="RECUSADO">Recusado</option>
                 </select>
               </div>
+
+              <button
+                onClick={handleGerarAutomatico}
+                disabled={gerandoLotes}
+                className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-950/40 flex items-center gap-2 whitespace-nowrap transition-all"
+                title="Consolida automaticamente todas as OSs concluídas do mês em lotes mensais com vencimento no 5º dia útil"
+              >
+                <span>{gerandoLotes ? '⏳ Compilando...' : '⚡ Compilar Lotes do Mês'}</span>
+              </button>
             </div>
 
             {/* Tabela de Lotes */}

@@ -5,9 +5,9 @@ import (
 
 	"workspace/backend/config"
 	"workspace/backend/routes"
+	"workspace/backend/services"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 )
@@ -16,15 +16,15 @@ func main() {
 	// 1. Inicia a conexão com o banco de dados e executa migrações/seeds
 	config.ConectarBanco()
 
+	// 1.1 Inicia o Scheduler Financeiro em segundo plano (automação de fechamentos e provisões)
+	services.IniciarSchedulerFinanceiro()
+
 	// 2. Inicia a instância do Fiber com limite de upload de 20MB
 	app := fiber.New(fiber.Config{
 		BodyLimit: 20 * 1024 * 1024,
 	})
 
-	// 3. Middlewares globais (Compressão de banda, Logs e CORS)
-	app.Use(compress.New(compress.Config{
-		Level: compress.LevelBestSpeed,
-	}))
+	// 3. Middlewares globais (Logs no terminal e permissão de CORS)
 	app.Use(logger.New(logger.Config{
 		Format: "[${time}] ${status} - ${method} ${path} | ${latency}\n",
 	}))

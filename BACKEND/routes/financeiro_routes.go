@@ -16,6 +16,7 @@ func RegisterFinanceiroRoutes(router fiber.Router) {
 	router.Put("/fechamentos/:id/aprovar", controllers.AprovarFechamento)
 	router.Post("/fechamentos/:id/pagar", controllers.PagarFechamento)
 	router.Get("/fechamentos/:id/termo-quitacao", controllers.GerarTermoQuitacaoHTML)
+	router.Post("/fechamentos/gerar-automatico", controllers.GerarFechamentoAutomaticoTrigger)
 
 	// Fluxo de Caixa e Contabilidade
 	router.Get("/financeiro/fluxo-caixa", controllers.ObterFluxoCaixa)

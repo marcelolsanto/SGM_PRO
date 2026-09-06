@@ -382,7 +382,7 @@ func dispararConfirmacaoCliente(p ContatoPayload, leadID uint) {
       <div class="text">
         Se preferir falar conosco agora mesmo, clique no botão abaixo para iniciar uma conversa no WhatsApp:
       </div>
-      <a href="https://wa.me/5511972980409?text=Ol%C3%A1+Marcelo%2C+acabei+de+enviar+meu+contato+pelo+site+do+SGM.PRO+e+gostaria+de+atendimento." class="btn-wa">
+      <a href="https://wa.me/5511972980409?text=Ol%%C3%%A1+Marcelo%%2C+acabei+de+enviar+meu+contato+pelo+site+do+SGM.PRO+e+gostaria+de+atendimento." class="btn-wa">
         💬 Conversar pelo WhatsApp
       </a>
     </div>

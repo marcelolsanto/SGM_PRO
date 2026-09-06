@@ -7,6 +7,7 @@ import (
 
 	"workspace/backend/config"
 	"workspace/backend/models"
+	"workspace/backend/services"
 	"workspace/backend/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -525,7 +526,16 @@ func AtualizarStatus(c *fiber.Ctx) error {
 	}
 
 	os.Status = p.Status
+	if (os.Status == "CONCLUIDO" || os.Status == "CONCLUIDA") && os.DataConclusao == nil {
+		now := time.Now()
+		os.DataConclusao = &now
+	}
 	config.DB.Save(&os)
+
+	if os.Status == "CONCLUIDO" || os.Status == "CONCLUIDA" {
+		services.ProvisionarFinanceiroOS(&os)
+	}
+
 	return c.Status(200).JSON(os)
 }
 
@@ -663,6 +673,9 @@ func EntregarMedicao(c *fiber.Ctx) error {
 		os.DataConclusao = &now
 	}
 	config.DB.Save(&os)
+
+	// Provisão contábil e de repasse automática no Livro Caixa
+	services.ProvisionarFinanceiroOS(&os)
 
 	return c.Status(200).JSON(os)
 }

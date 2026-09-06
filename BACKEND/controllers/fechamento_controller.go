@@ -613,3 +613,20 @@ func GerarTermoQuitacaoHTML(c *fiber.Ctx) error {
 	c.Set("Content-Type", "text/html; charset=utf-8")
 	return c.SendString(html)
 }
+
+// GerarFechamentoAutomaticoTrigger aciona o preenchimento automático de lotes sob demanda
+func GerarFechamentoAutomaticoTrigger(c *fiber.Ctx) error {
+	ano, _ := strconv.Atoi(c.Query("ano"))
+	mes, _ := strconv.Atoi(c.Query("mes"))
+
+	lotes, err := services.GerarLotesMensaisAutomaticos(ano, mes)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"erro": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"mensagem":      fmt.Sprintf("%d lote(s) gerado(s) automaticamente com sucesso!", len(lotes)),
+		"total_criados": len(lotes),
+		"lotes":         lotes,
+	})
+}
