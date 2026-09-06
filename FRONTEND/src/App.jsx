@@ -132,12 +132,12 @@ function App() {
           {perfil === 'ADMIN' && abaAtiva === 'dashboard' && <Dashboard perfil={perfil} />}
           {abaAtiva === 'campo' && <TorreControle perfil={perfil} setToken={setToken} />}
           {perfil === 'ADMIN' && abaAtiva === 'operacoes' && <Operacoes />}
-          {perfil === 'ADMIN' && abaAtiva === 'financeiro' && <PainelFinanceiro onVoltar={() => setAbaAtiva('dashboard')} />}
+          {perfil === 'ADMIN' && abaAtiva === 'financeiro' && <PainelFinanceiro perfil={perfil} onVoltar={() => setAbaAtiva('dashboard')} />}
           {perfil === 'ADMIN' && abaAtiva === 'admin' && <Admin perfil={perfil} refId={refId} />}
 
           {perfil === 'LOJA' && abaAtiva === 'dashboard' && <Dashboard perfil={perfil} />}
           {perfil === 'LOJA' && abaAtiva === 'operacoes' && <PortalUsuario perfil={perfil} refId={refId} setToken={setToken} />}
-          {perfil === 'LOJA' && abaAtiva === 'financeiro' && <PainelFinanceiro onVoltar={() => setAbaAtiva('operacoes')} />}
+          {perfil === 'LOJA' && abaAtiva === 'financeiro' && <PainelFinanceiro perfil={perfil} onVoltar={() => setAbaAtiva('operacoes')} />}
           {perfil === 'LOJA' && abaAtiva === 'admin' && <Admin perfil={perfil} refId={refId} />}
 
           {perfil === 'MEDIDOR' && abaAtiva !== 'institucional' && abaAtiva !== 'campo' && <PortalUsuario perfil={perfil} refId={refId} setToken={setToken} />}

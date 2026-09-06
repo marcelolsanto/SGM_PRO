@@ -315,25 +315,52 @@ func SolicitarFechamento(c *fiber.Ctx) error {
 	})
 }
 
-// ListarFechamentos lista os lotes com filtros
+// ListarFechamentos lista os lotes com filtros avançados (ano, mês, loja, medidor, status)
 func ListarFechamentos(c *fiber.Ctx) error {
-	perfil := c.Locals("perfil").(string)
-	var refID uint
-	if r, ok := c.Locals("ref_id").(float64); ok {
-		refID = uint(r)
-	} else if r, ok := c.Locals("ref_id").(uint); ok {
-		refID = r
-	}
+	perfil, refID := getPerfilERefID(c)
+	redeID := getRedeID(c)
 
 	query := config.DB.Preload("Medidor").Order("criado_em DESC")
 
+	// 1. Filtro por Medidor
 	if perfil == "MEDIDOR" {
 		query = query.Where("medidor_id = ?", refID)
-	} else if medidorID := c.Query("medidor_id"); medidorID != "" {
+	} else if medidorID := c.Query("medidor_id"); medidorID != "" && medidorID != "TODOS" {
 		query = query.Where("medidor_id = ?", medidorID)
 	}
 
-	if status := c.Query("status"); status != "" {
+	// 2. Filtro por Loja / Rede (Multi-tenant)
+	lojaID := c.Query("loja_id")
+	if perfil == "LOJA" {
+		if redeID > 0 {
+			if lojaID != "" && lojaID != "TODAS" {
+				query = query.Where("id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id = ? AND os.loja_id IN (SELECT id FROM lojas WHERE rede_id = ? OR id = ?))", lojaID, redeID, refID)
+			} else {
+				query = query.Where("id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id IN (SELECT id FROM lojas WHERE rede_id = ? OR id = ?))", redeID, refID)
+			}
+		} else {
+			query = query.Where("id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id = ?)", refID)
+		}
+	} else {
+		if lojaID != "" && lojaID != "TODAS" {
+			query = query.Where("id IN (SELECT fmi.fechamento_id FROM fechamento_medidor_itens fmi JOIN ordem_servicos os ON os.id = fmi.ordem_servico_id WHERE os.loja_id = ?)", lojaID)
+		}
+	}
+
+	// 3. Filtro por Ano
+	anoStr := c.Query("ano")
+	if a, err := strconv.Atoi(anoStr); err == nil && a > 2000 {
+		query = query.Where("EXTRACT(YEAR FROM periodo_inicio) = ?", a)
+	}
+
+	// 4. Filtro por Mês
+	mesStr := c.Query("mes")
+	if m, err := strconv.Atoi(mesStr); err == nil && m >= 1 && m <= 12 {
+		query = query.Where("EXTRACT(MONTH FROM periodo_inicio) = ?", m)
+	}
+
+	// 5. Filtro por Status
+	if status := c.Query("status"); status != "" && status != "TODOS" {
 		query = query.Where("status = ?", status)
 	}
 

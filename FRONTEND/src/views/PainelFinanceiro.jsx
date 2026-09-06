@@ -2,17 +2,26 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import ModalAuditoriaFinanceira from '../components/ModalAuditoriaFinanceira'
 
-export default function PainelFinanceiro({ onVoltar }) {
+export default function PainelFinanceiro({ onVoltar, perfil = 'ADMIN' }) {
   const [abaAtiva, setAbaAtiva] = useState('lotes') // 'lotes' | 'fluxo' | 'livro' | 'compliance'
   const [lotes, setLotes] = useState([])
   const [fluxoCaixa, setFluxoCaixa] = useState(null)
   const [lancamentos, setLancamentos] = useState([])
   const [loading, setLoading] = useState(true)
   const [gerandoLotes, setGerandoLotes] = useState(false)
+  const [exportandoCSV, setExportandoCSV] = useState(false)
 
-  // Filtros de Lotes
+  // 🎯 FILTROS ANALÍTICOS (Ano, Mês, Unidade/Loja, Medidor)
+  const [filtroAno, setFiltroAno] = useState('2026')
+  const [filtroMes, setFiltroMes] = useState('TODOS')
+  const [filtroLoja, setFiltroLoja] = useState('TODAS')
+  const [filtroMedidor, setFiltroMedidor] = useState('TODOS')
   const [filtroStatus, setFiltroStatus] = useState('')
   const [buscaMedidor, setBuscaMedidor] = useState('')
+
+  // Listas de apoio para seleção
+  const [lojas, setLojas] = useState([])
+  const [medidores, setMedidores] = useState([])
 
   // Modal de Auditoria
   const [loteSelecionadoId, setLoteSelecionadoId] = useState(null)
@@ -25,17 +34,59 @@ export default function PainelFinanceiro({ onVoltar }) {
   const [novoValor, setNovoValor] = useState('')
   const [novaDescricao, setNovaDescricao] = useState('')
 
+  const mesesNomes = [
+    { num: '01', nome: 'Janeiro' },
+    { num: '02', nome: 'Fevereiro' },
+    { num: '03', nome: 'Março' },
+    { num: '04', nome: 'Abril' },
+    { num: '05', nome: 'Maio' },
+    { num: '06', nome: 'Junho' },
+    { num: '07', nome: 'Julho' },
+    { num: '08', nome: 'Agosto' },
+    { num: '09', nome: 'Setembro' },
+    { num: '10', nome: 'Outubro' },
+    { num: '11', nome: 'Novembro' },
+    { num: '12', nome: 'Dezembro' }
+  ]
+
+  const anosDisponiveis = ['TODOS', '2026', '2025', '2024']
+
+  // Carrega opções de lojas e medidores no carregamento inicial
+  useEffect(() => {
+    const carregarOpcoesFiltros = async () => {
+      try {
+        const [resLojas, resMedidores] = await Promise.all([
+          axios.get('/api/lojas'),
+          axios.get('/api/medidores')
+        ])
+        setLojas(resLojas.data || [])
+        setMedidores(resMedidores.data || [])
+      } catch (err) {
+        console.error('Erro ao carregar opções para filtros:', err)
+      }
+    }
+    carregarOpcoesFiltros()
+  }, [])
+
+  // Recarrega os dados financeiros sempre que os filtros principais forem alterados
   useEffect(() => {
     carregarDados()
-  }, [])
+  }, [filtroAno, filtroMes, filtroLoja, filtroMedidor, filtroStatus])
 
   const carregarDados = async () => {
     setLoading(true)
     try {
+      const params = {}
+      if (filtroAno && filtroAno !== 'TODOS') params.ano = filtroAno
+      if (filtroMes && filtroMes !== 'TODOS') params.mes = filtroMes
+      if (filtroLoja && filtroLoja !== 'TODAS') params.loja_id = filtroLoja
+      if (filtroMedidor && filtroMedidor !== 'TODOS') params.medidor_id = filtroMedidor
+      if (filtroStatus) params.status = filtroStatus
+
       const [resLotes, resFluxo, resLanc] = await Promise.all([
-        axios.get('/api/fechamentos'),
-        axios.get('/api/financeiro/fluxo-caixa'),
-        axios.get('/api/financeiro/lancamentos')
+        axios.get('/api/fechamentos', { params }),
+        axios.get('/api/financeiro/fluxo-caixa', { params }),
+        axios.get('/api/financeiro/lancamentos', { params })
       ])
       setLotes(resLotes.data || [])
       setFluxoCaixa(resFluxo.data || null)
@@ -44,6 +95,42 @@ export default function PainelFinanceiro({ onVoltar }) {
       console.error('Erro ao carregar dados financeiros:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleLimparFiltros = () => {
+    setFiltroAno('2026')
+    setFiltroMes('TODOS')
+    setFiltroLoja('TODAS')
+    setFiltroMedidor('TODOS')
+    setFiltroStatus('')
+    setBuscaMedidor('')
+  }
+
+  const exportarRelatorioCSV = async () => {
+    setExportandoCSV(true)
+    try {
+      const params = new URLSearchParams()
+      if (filtroAno && filtroAno !== 'TODOS') params.append('ano', filtroAno)
+      if (filtroMes && filtroMes !== 'TODOS') params.append('mes', filtroMes)
+      if (filtroLoja && filtroLoja !== 'TODAS') params.append('loja_id', filtroLoja)
+      if (filtroMedidor && filtroMedidor !== 'TODOS') params.append('medidor_id', filtroMedidor)
+
+      const url = `/api/financeiro/exportar-contabil?${params.toString()}`
+      const res = await axios.get(url, { responseType: 'blob' })
+
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      const nomeSufixo = `${filtroAno}_${filtroMes !== 'TODOS' ? filtroMes : 'consolidado'}`
+      link.setAttribute('download', `relatorio_contabil_sgm_${nomeSufixo}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (err) {
+      alert('Erro ao exportar relatório contábil: ' + (err.response?.data?.erro || err.message))
+    } finally {
+      setExportandoCSV(false)
     }
   }
 
@@ -97,20 +184,19 @@ export default function PainelFinanceiro({ onVoltar }) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
   }
 
-  // Filtragem dos lotes
+  // Filtragem adicional local dos lotes por busca textual (nome do medidor ou número do lote)
   const lotesFiltrados = lotes.filter(l => {
-    const matchStatus = filtroStatus ? l.status === filtroStatus : true
     const matchBusca = buscaMedidor 
       ? (l.medidor?.nome_completo?.toLowerCase().includes(buscaMedidor.toLowerCase()) || 
          l.numero_lote?.toLowerCase().includes(buscaMedidor.toLowerCase()))
       : true
-    return matchStatus && matchBusca
+    return matchBusca
   })
 
   // KPIs
   const totalPendente = lotes
     .filter(l => l.status !== 'PAGO' && l.status !== 'RECUSADO')
-    .reduce((acc, l) => acc + l.valor_liquido, 0)
+    .reduce((acc, l) => acc + (l.valor_liquido || 0), 0)
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
@@ -132,19 +218,19 @@ export default function PainelFinanceiro({ onVoltar }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <a 
-              href="/api/financeiro/exportar-contabil"
-              target="_blank"
-              rel="noreferrer"
-              className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs px-4 py-2.5 rounded-xl border border-slate-700 transition-all flex items-center gap-2"
+          <div className="flex items-center gap-3 flex-wrap">
+            <button 
+              onClick={exportarRelatorioCSV}
+              disabled={exportandoCSV}
+              className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 font-bold text-xs px-4 py-2.5 rounded-xl border border-slate-700 transition-all flex items-center gap-2 cursor-pointer shadow-lg"
+              title="Gera o arquivo CSV filtrado com todas as movimentações contábeis"
             >
-              📥 Exportar Relatório Contábil (CSV)
-            </a>
+              <span>{exportandoCSV ? '⏳ Exportando...' : '📥 Exportar Relatório Contábil (CSV)'}</span>
+            </button>
             {onVoltar && (
               <button
                 onClick={onVoltar}
-                className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all"
+                className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-lg shadow-blue-950/40"
               >
                 ← Voltar ao Sistema
               </button>
@@ -152,14 +238,120 @@ export default function PainelFinanceiro({ onVoltar }) {
           </div>
         </div>
 
-        {/* 4 Cards de Resumo Financeiro (KPIs) */}
+        {/* 🔥 BARRA DE FILTROS: ANO, MÊS, UNIDADE / LOJA, MEDIDOR 🔥 */}
+        <div className="bg-slate-900 border border-slate-800 p-4 md:p-5 rounded-3xl shadow-xl space-y-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800/80 pb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-base">⚡</span>
+              <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-wider">
+                Filtros Analíticos & Consolidação
+              </h3>
+            </div>
+            {(filtroAno !== '2026' || filtroMes !== 'TODOS' || filtroLoja !== 'TODAS' || filtroMedidor !== 'TODOS' || filtroStatus !== '' || buscaMedidor !== '') && (
+              <button
+                onClick={handleLimparFiltros}
+                className="text-[11px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-amber-400/10 cursor-pointer"
+              >
+                <span>🔄</span> Limpar Filtros
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+            {/* FILTRO 1: ANO */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                🗓️ Ano de Competência
+              </label>
+              <select
+                value={filtroAno}
+                onChange={(e) => setFiltroAno(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-white text-xs font-bold outline-none focus:border-blue-500 transition-all cursor-pointer"
+              >
+                {anosDisponiveis.map(a => (
+                  <option key={a} value={a}>{a === 'TODOS' ? 'Todos os Anos' : `Exercício ${a}`}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* FILTRO 2: MÊS */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                📅 Mês de Referência
+              </label>
+              <select
+                value={filtroMes}
+                onChange={(e) => setFiltroMes(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-blue-400 text-xs font-bold outline-none focus:border-blue-500 transition-all cursor-pointer"
+              >
+                <option value="TODOS">Todos os Meses (Consolidado)</option>
+                {mesesNomes.map(m => (
+                  <option key={m.num} value={m.num}>{m.num} - {m.nome}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* FILTRO 3: UNIDADE / REDE DE LOJAS */}
+            {(perfil === 'ADMIN' || lojas.length > 1) ? (
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                  🏢 Unidade / Rede de Lojas
+                </label>
+                <select
+                  value={filtroLoja}
+                  onChange={(e) => setFiltroLoja(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-amber-400 text-xs font-bold outline-none focus:border-blue-500 transition-all cursor-pointer"
+                >
+                  <option value="TODAS">Todas as Lojas ({lojas.length})</option>
+                  {lojas.map(l => (
+                    <option key={l.id} value={l.id.toString()}>
+                      {l.nome_fantasia} {l.nome_rede ? `• [Rede: ${l.nome_rede}]` : ''} {l.eh_matriz ? '⭐ (Matriz)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                  🏢 Unidade
+                </label>
+                <div className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-slate-400 text-xs font-bold truncate">
+                  {lojas[0]?.nome_fantasia || 'Minha Loja'}
+                </div>
+              </div>
+            )}
+
+            {/* FILTRO 4: MEDIDOR */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                👷 Medidor Parceiro
+              </label>
+              <select
+                value={filtroMedidor}
+                onChange={(e) => setFiltroMedidor(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-emerald-400 text-xs font-bold outline-none focus:border-blue-500 transition-all cursor-pointer"
+              >
+                <option value="TODOS">Todos os Medidores ({medidores.length})</option>
+                {medidores.map(m => (
+                  <option key={m.id} value={m.id.toString()}>
+                    {m.nome_completo}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* 4 Cards de Resumo Financeiro (KPIs Reativos) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-xl">
             <span className="text-[10px] uppercase font-black tracking-widest text-slate-500">Receitas Totais (Lojas)</span>
             <p className="text-2xl font-black text-white font-mono mt-1">
               {formatarMoeda(fluxoCaixa?.total_entradas)}
             </p>
-            <span className="text-[10px] text-emerald-400 font-bold block mt-1">Faturamento Bruto</span>
+            <span className="text-[10px] text-emerald-400 font-bold block mt-1">
+              {filtroMes !== 'TODOS' ? `Mês ${filtroMes}` : 'Faturamento Período'}
+            </span>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-xl">
@@ -193,17 +385,17 @@ export default function PainelFinanceiro({ onVoltar }) {
         <div className="flex border-b border-slate-800 gap-2 overflow-x-auto">
           <button
             onClick={() => setAbaAtiva('lotes')}
-            className={`py-3 px-5 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+            className={`py-3 px-5 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
               abaAtiva === 'lotes' 
                 ? 'border-blue-500 text-blue-400 bg-blue-500/10 rounded-t-2xl' 
                 : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
-            <span>📋</span> Lotes de Fechamento ({lotes.length})
+            <span>📋</span> Lotes de Fechamento ({lotesFiltrados.length})
           </button>
           <button
             onClick={() => setAbaAtiva('fluxo')}
-            className={`py-3 px-5 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+            className={`py-3 px-5 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
               abaAtiva === 'fluxo' 
                 ? 'border-blue-500 text-blue-400 bg-blue-500/10 rounded-t-2xl' 
                 : 'border-transparent text-slate-400 hover:text-white'
@@ -213,7 +405,7 @@ export default function PainelFinanceiro({ onVoltar }) {
           </button>
           <button
             onClick={() => setAbaAtiva('livro')}
-            className={`py-3 px-5 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+            className={`py-3 px-5 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
               abaAtiva === 'livro' 
                 ? 'border-blue-500 text-blue-400 bg-blue-500/10 rounded-t-2xl' 
                 : 'border-transparent text-slate-400 hover:text-white'
@@ -223,7 +415,7 @@ export default function PainelFinanceiro({ onVoltar }) {
           </button>
           <button
             onClick={() => setAbaAtiva('compliance')}
-            className={`py-3 px-5 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+            className={`py-3 px-5 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
               abaAtiva === 'compliance' 
                 ? 'border-blue-500 text-blue-400 bg-blue-500/10 rounded-t-2xl' 
                 : 'border-transparent text-slate-400 hover:text-white'
@@ -237,7 +429,7 @@ export default function PainelFinanceiro({ onVoltar }) {
         {abaAtiva === 'lotes' && (
           <div className="space-y-4">
             
-            {/* Filtros de Lote */}
+            {/* Filtros rápidos da aba de lotes */}
             <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row gap-3 items-center justify-between">
               <div className="flex flex-1 gap-3 w-full">
                 <input 
@@ -250,9 +442,9 @@ export default function PainelFinanceiro({ onVoltar }) {
                 <select
                   value={filtroStatus}
                   onChange={(e) => setFiltroStatus(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-blue-500"
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-blue-500 cursor-pointer"
                 >
-                  <option value="">Todos os Status</option>
+                  <option value="">Todos os Status de Lote</option>
                   <option value="ENVIADO_CONFERENCIA">Em Conferência</option>
                   <option value="APROVADO">Aprovado p/ Pagamento</option>
                   <option value="PAGO">Pago (Quitação Plena)</option>
@@ -260,14 +452,16 @@ export default function PainelFinanceiro({ onVoltar }) {
                 </select>
               </div>
 
-              <button
-                onClick={handleGerarAutomatico}
-                disabled={gerandoLotes}
-                className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-950/40 flex items-center gap-2 whitespace-nowrap transition-all"
-                title="Consolida automaticamente todas as OSs concluídas do mês em lotes mensais com vencimento no 5º dia útil"
-              >
-                <span>{gerandoLotes ? '⏳ Compilando...' : '⚡ Compilar Lotes do Mês'}</span>
-              </button>
+              {perfil === 'ADMIN' && (
+                <button
+                  onClick={handleGerarAutomatico}
+                  disabled={gerandoLotes}
+                  className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-950/40 flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer"
+                  title="Consolida automaticamente todas as OSs concluídas do mês em lotes mensais com vencimento no 5º dia útil"
+                >
+                  <span>{gerandoLotes ? '⏳ Compilando...' : '⚡ Compilar Lotes do Mês'}</span>
+                </button>
+              )}
             </div>
 
             {/* Tabela de Lotes */}
@@ -329,7 +523,7 @@ export default function PainelFinanceiro({ onVoltar }) {
                           <td className="p-4 text-right space-x-2">
                             <button
                               onClick={() => handleAbrirAuditoria(lote.id)}
-                              className="bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs px-3 py-1.5 rounded-xl border border-slate-700 transition-all"
+                              className="bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs px-3 py-1.5 rounded-xl border border-slate-700 transition-all cursor-pointer"
                             >
                               {isPago ? 'Ver Detalhes' : 'Auditar & Pagar'}
                             </button>
@@ -350,7 +544,7 @@ export default function PainelFinanceiro({ onVoltar }) {
                   ) : (
                     <tr>
                       <td colSpan="9" className="p-12 text-center text-slate-500">
-                        Nenhum lote de fechamento encontrado para os filtros selecionados.
+                        {loading ? 'Carregando lotes de fechamento...' : 'Nenhum lote de fechamento encontrado para os filtros selecionados.'}
                       </td>
                     </tr>
                   )}
@@ -366,8 +560,12 @@ export default function PainelFinanceiro({ onVoltar }) {
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
               <div className="flex justify-between items-center">
                 <div>
-                  <h3 className="text-base font-black text-white">Demonstrativo de Resultados do Exercício (DRE) • {fluxoCaixa?.ano}</h3>
-                  <p className="text-xs text-slate-400">Visão consolidada mês a mês de entradas, saídas e resultado operacional</p>
+                  <h3 className="text-base font-black text-white">
+                    Demonstrativo de Resultados do Exercício (DRE) • {fluxoCaixa?.ano}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Visão consolidada mês a mês de receitas, saídas e resultado operacional
+                  </p>
                 </div>
               </div>
 
@@ -408,12 +606,14 @@ export default function PainelFinanceiro({ onVoltar }) {
                 <h3 className="text-sm font-black text-white">Lançamentos Financeiros (Livro Caixa)</h3>
                 <p className="text-xs text-slate-400">Registro analítico das movimentações bancárias</p>
               </div>
-              <button
-                onClick={() => setModalNovoLancamento(true)}
-                className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all"
-              >
-                + Novo Lançamento Manual
-              </button>
+              {perfil === 'ADMIN' && (
+                <button
+                  onClick={() => setModalNovoLancamento(true)}
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer shadow-md"
+                >
+                  + Novo Lançamento Manual
+                </button>
+              )}
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl overflow-x-auto custom-scrollbar">
@@ -454,7 +654,9 @@ export default function PainelFinanceiro({ onVoltar }) {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="6" className="p-8 text-center text-slate-500">Nenhum lançamento registrado.</td>
+                      <td colSpan="6" className="p-8 text-center text-slate-500">
+                        {loading ? 'Carregando lançamentos...' : 'Nenhum lançamento registrado para os filtros selecionados.'}
+                      </td>
                     </tr>
                   )}
                 </tbody>
