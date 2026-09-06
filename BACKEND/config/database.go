@@ -37,8 +37,8 @@ func ConectarBanco() {
 	DB = database
 	sqlDB, errDB := DB.DB()
 	if errDB == nil {
-		sqlDB.SetMaxOpenConns(100)
-		sqlDB.SetMaxIdleConns(25)
+		sqlDB.SetMaxOpenConns(150)
+		sqlDB.SetMaxIdleConns(50)
 		sqlDB.SetConnMaxLifetime(time.Hour)
 	}
 	log.Println("✅ Banco de dados PostgreSQL conectado com sucesso!")
@@ -56,6 +56,19 @@ func ConectarBanco() {
 	)
 	if err != nil {
 		log.Println("⚠️ Aviso nas migrações do banco:", err)
+	}
+
+	// 3.1. Índices B-Tree de alta performance para concorrência em escala
+	indices := []string{
+		"CREATE INDEX IF NOT EXISTS idx_os_loja_status ON ordem_servicos(loja_id, status);",
+		"CREATE INDEX IF NOT EXISTS idx_os_medidor_status ON ordem_servicos(medidor_id, status);",
+		"CREATE INDEX IF NOT EXISTS idx_os_token ON ordem_servicos(token);",
+		"CREATE INDEX IF NOT EXISTS idx_os_criado_em ON ordem_servicos(criado_em);",
+		"CREATE INDEX IF NOT EXISTS idx_ambientes_os_id ON ambientes(ordem_servico_id);",
+		"CREATE INDEX IF NOT EXISTS idx_clientes_loja_id ON clientes(loja_id);",
+	}
+	for _, idxSql := range indices {
+		DB.Exec(idxSql)
 	}
 
 	// 4. Seed do Administrador padrão caso o banco esteja vazio
