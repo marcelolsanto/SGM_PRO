@@ -95,7 +95,7 @@ func ProvisionarFinanceiroOS(os *models.OrdemServico) {
 	}
 }
 
-// GerarLotesMensaisAutomaticos consolida automaticamente todas as OSs do mês anterior (ou atual) em lotes
+// GerarLotesMensaisAutomaticos consolida automaticamente todas as OSs do mês em lotes
 func GerarLotesMensaisAutomaticos(ano int, mes int) ([]models.FechamentoMedidor, error) {
 	agora := time.Now()
 
@@ -109,75 +109,75 @@ func GerarLotesMensaisAutomaticos(ano int, mes int) ([]models.FechamentoMedidor,
 	dataInicio := time.Date(ano, time.Month(mes), 1, 0, 0, 0, 0, time.Local)
 	dataFim := time.Date(ano, time.Month(mes+1), 0, 23, 59, 59, 999999999, time.Local)
 
-	// 1. Busca todas as OSs concluídas no período
-	var ordens []models.OrdemServico
-	err := config.DB.Preload("Medidor").Preload("Loja").
+	// 1. Agregação em SQL de alta performance das OSs concluídas por medidor
+	type AgregadoMedidor struct {
+		MedidorID         uint    `gorm:"column:medidor_id"`
+		QtdOS             int     `gorm:"column:qtd_os"`
+		TotalBruto        float64 `gorm:"column:total_bruto"`
+		TotalMaoDeObra    float64 `gorm:"column:total_mao_de_obra"`
+		TotalDeslocamento float64 `gorm:"column:total_deslocamento"`
+		TotalAdicionais   float64 `gorm:"column:total_adicionais"`
+	}
+
+	var agregados []AgregadoMedidor
+	subQuery := config.DB.Table("fechamento_medidor_itens").
+		Select("ordem_servico_id").
+		Joins("JOIN fechamento_medidores ON fechamento_medidores.id = fechamento_medidor_itens.fechamento_id").
+		Where("fechamento_medidores.status != 'RECUSADO'")
+
+	err := config.DB.Table("ordem_servicos").
+		Select(`medidor_id,
+			COUNT(*) AS qtd_os,
+			COALESCE(SUM(custo_medidor), 0) AS total_bruto,
+			COALESCE(SUM(mao_de_obra_medidor), 0) AS total_mao_de_obra,
+			COALESCE(SUM(taxa_deslocamento), 0) AS total_deslocamento,
+			COALESCE(SUM(adicional_urgencia), 0) AS total_adicionais`).
 		Where("status IN ('CONCLUIDO', 'CONCLUIDA', 'VALIDADA')").
 		Where("medidor_id IS NOT NULL").
-		Where("(data_conclusao BETWEEN ? AND ?) OR (data_conclusao IS NULL AND criado_em BETWEEN ? AND ?)", dataInicio, dataFim, dataInicio, dataFim).
-		Find(&ordens).Error
+		Where("criado_em BETWEEN ? AND ?", dataInicio, dataFim).
+		Where("id NOT IN (?)", subQuery).
+		Group("medidor_id").
+		Scan(&agregados).Error
 
 	if err != nil {
-		return nil, fmt.Errorf("falha ao buscar ordens para fechamento: %v", err)
+		return nil, fmt.Errorf("falha ao agregar ordens para fechamento: %v", err)
 	}
 
-	// 2. Busca OSs que já estão vinculadas a lotes ativos
-	var idsEmLotes []uint
-	config.DB.Table("fechamento_medidor_itens").
-		Select("fechamento_medidor_itens.ordem_servico_id").
-		Joins("JOIN fechamento_medidores ON fechamento_medidores.id = fechamento_medidor_itens.fechamento_id").
-		Where("fechamento_medidores.status != 'RECUSADO'").
-		Pluck("ordem_servico_id", &idsEmLotes)
-
-	mapEmLote := make(map[uint]bool)
-	for _, id := range idsEmLotes {
-		mapEmLote[id] = true
+	if len(agregados) == 0 {
+		return []models.FechamentoMedidor{}, nil
 	}
 
-	// 3. Agrupa por medidor
-	ordensPorMedidor := make(map[uint][]models.OrdemServico)
-	for _, o := range ordens {
-		if mapEmLote[o.ID] {
-			continue // Já faturada
-		}
-		if o.MedidorID != nil {
-			ordensPorMedidor[*o.MedidorID] = append(ordensPorMedidor[*o.MedidorID], o)
-		}
+	// 2. Busca dados cadastrais dos medidores envolvidos em uma única consulta
+	var medidorIDs []uint
+	for _, a := range agregados {
+		medidorIDs = append(medidorIDs, a.MedidorID)
+	}
+	var medidores []models.Medidor
+	config.DB.Where("id IN (?)", medidorIDs).Find(&medidores)
+	mapMedidores := make(map[uint]models.Medidor)
+	for _, m := range medidores {
+		mapMedidores[m.ID] = m
 	}
 
 	var lotesCriados []models.FechamentoMedidor
 
-	// 4. Cria o lote automático para cada medidor que tenha medições
-	for medidorID, osLista := range ordensPorMedidor {
-		if len(osLista) == 0 {
-			continue
-		}
-
-		var totalMaoObra, totalDesloc, totalAdic, totalBruto float64
-		for _, it := range osLista {
-			mObra := it.MaoDeObraMedidor
-			if mObra == 0 {
-				mObra = it.CustoMedidor - it.TaxaDeslocamento - it.AdicionalUrgencia
-				if mObra < 0 {
-					mObra = it.CustoMedidor
-				}
+	// 3. Criação dos lotes consolidados e vinculação rápida de itens
+	for i, ag := range agregados {
+		medidor := mapMedidores[ag.MedidorID]
+		totalBruto := ag.TotalBruto
+		totalMaoObra := ag.TotalMaoDeObra
+		if totalMaoObra == 0 {
+			totalMaoObra = totalBruto - ag.TotalDeslocamento - ag.TotalAdicionais
+			if totalMaoObra < 0 {
+				totalMaoObra = totalBruto
 			}
-			totalMaoObra += mObra
-			totalDesloc += it.TaxaDeslocamento
-			totalAdic += it.AdicionalUrgencia
-			totalBruto += it.CustoMedidor
 		}
-
-		var medidor models.Medidor
-		config.DB.First(&medidor, medidorID)
 
 		// Determina enquadramento fiscal padrão
 		tipoFiscal := "MEI"
 		var retencoes float64
-		// Se CPF tiver menos de 14 caracteres ou não tiver CNPJ, calcula prévia RPA
 		if len(medidor.Cpf) <= 14 {
 			tipoFiscal = "RPA"
-			// 11% INSS até o teto
 			inss := totalMaoObra * 0.11
 			if inss > 908.85 {
 				inss = 908.85
@@ -186,24 +186,17 @@ func GerarLotesMensaisAutomaticos(ano int, mes int) ([]models.FechamentoMedidor,
 		}
 
 		valorLiquido := totalBruto - retencoes
-
-		// Gera número de protocolo
-		var contagem int64
-		config.DB.Model(&models.FechamentoMedidor{}).
-			Where("periodo_inicio >= ?", dataInicio).
-			Count(&contagem)
-
-		numeroLote := fmt.Sprintf("LOT-%04d%02d-M%d-%03d", ano, mes, medidorID, contagem+1)
+		numeroLote := fmt.Sprintf("LOT-%04d%02d-M%d-%03d", ano, mes, ag.MedidorID, i+1)
 
 		fechamento := models.FechamentoMedidor{
-			MedidorID:              medidorID,
+			MedidorID:              ag.MedidorID,
 			NumeroLote:             numeroLote,
 			PeriodoInicio:          dataInicio,
 			PeriodoFim:             dataFim,
-			QuantidadeOS:           len(osLista),
+			QuantidadeOS:           ag.QtdOS,
 			ValorMaoDeObra:         math.Round(totalMaoObra*100) / 100,
-			ValorDeslocamento:      math.Round(totalDesloc*100) / 100,
-			ValorAdicionais:        math.Round(totalAdic*100) / 100,
+			ValorDeslocamento:      math.Round(ag.TotalDeslocamento*100) / 100,
+			ValorAdicionais:        math.Round(ag.TotalAdicionais*100) / 100,
 			ValorBruto:             math.Round(totalBruto*100) / 100,
 			ValorRetencoesImpostos: math.Round(retencoes*100) / 100,
 			ValorLiquido:           math.Round(valorLiquido*100) / 100,
@@ -215,23 +208,24 @@ func GerarLotesMensaisAutomaticos(ano int, mes int) ([]models.FechamentoMedidor,
 		}
 
 		if err := config.DB.Create(&fechamento).Error; err != nil {
-			log.Printf("⚠️ Erro ao criar lote automático para medidor %d: %v\n", medidorID, err)
+			log.Printf("⚠️ Erro ao criar lote para medidor %d: %v\n", ag.MedidorID, err)
 			continue
 		}
 
-		// Cria itens
-		for _, it := range osLista {
-			item := models.FechamentoMedidorItem{
-				FechamentoID:      fechamento.ID,
-				OrdemServicoID:    it.ID,
-				ValorMaoDeObra:    it.MaoDeObraMedidor,
-				ValorDeslocamento: it.TaxaDeslocamento,
-				ValorAdicionais:   it.AdicionalUrgencia,
-				ValorTotalItem:    it.CustoMedidor,
-				StatusItem:        "VALIDADO",
-			}
-			config.DB.Create(&item)
-		}
+		// Vincula as OSs ao lote em um único comando SQL em lote
+		sqlVincular := `INSERT INTO fechamento_medidor_itens 
+			(fechamento_id, ordem_servico_id, valor_mao_de_obra, valor_deslocamento, valor_adicionais, valor_total_item, status_item, criado_em, atualizado_em)
+			SELECT ?, id, mao_de_obra_medidor, taxa_deslocamento, adicional_urgencia, custo_medidor, 'VALIDADO', NOW(), NOW()
+			FROM ordem_servicos
+			WHERE medidor_id = ? 
+			  AND status IN ('CONCLUIDO', 'CONCLUIDA', 'VALIDADA')
+			  AND criado_em BETWEEN ? AND ?
+			  AND id NOT IN (
+				  SELECT ordem_servico_id FROM fechamento_medidor_itens fmi
+				  JOIN fechamento_medidores fm ON fm.id = fmi.fechamento_id
+				  WHERE fm.status != 'RECUSADO'
+			  )`
+		config.DB.Exec(sqlVincular, fechamento.ID, ag.MedidorID, dataInicio, dataFim)
 
 		lotesCriados = append(lotesCriados, fechamento)
 	}

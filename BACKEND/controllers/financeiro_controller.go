@@ -29,21 +29,28 @@ func ObterFluxoCaixa(c *fiber.Ctx) error {
 		Order("data_competencia ASC").
 		Find(&lancamentos)
 
-	// Também computa entradas oriundas das Ordens de Serviço faturadas no ano
-	var ordens []models.OrdemServico
-	config.DB.Where("criado_em BETWEEN ? AND ?", dataInicio, dataFim).
-		Find(&ordens)
+	// Também computa entradas oriundas das Ordens de Serviço faturadas no ano (agregação ultrarrápida via SQL)
+	type ResumoMes struct {
+		Mes   int     `gorm:"column:mes"`
+		Total float64 `gorm:"column:total"`
+	}
+	var resumos []ResumoMes
+	config.DB.Table("ordem_servicos").
+		Select("EXTRACT(MONTH FROM criado_em)::int AS mes, COALESCE(SUM(valor_total_os), 0) AS total").
+		Where("criado_em BETWEEN ? AND ?", dataInicio, dataFim).
+		Group("EXTRACT(MONTH FROM criado_em)").
+		Scan(&resumos)
 
 	var totalEntradas, totalSaidas float64
 	mesesEntradas := make([]float64, 12)
 	mesesSaidas := make([]float64, 12)
 
-	// 1. Processa receitas de OSs das lojas
-	for _, osItem := range ordens {
-		mesIdx := int(osItem.CriadoEm.Month()) - 1
+	// 1. Processa receitas de OSs das lojas agregadas
+	for _, r := range resumos {
+		mesIdx := r.Mes - 1
 		if mesIdx >= 0 && mesIdx < 12 {
-			totalEntradas += osItem.ValorTotalOS
-			mesesEntradas[mesIdx] += osItem.ValorTotalOS
+			totalEntradas += r.Total
+			mesesEntradas[mesIdx] += r.Total
 		}
 	}
 
