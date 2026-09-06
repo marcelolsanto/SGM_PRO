@@ -3,6 +3,17 @@ services:
     image: postgres:15-alpine
     container_name: sgm_postgres
     restart: unless-stopped
+    command: >
+      postgres
+      -c max_connections=500
+      -c shared_buffers=512MB
+      -c effective_cache_size=2GB
+      -c work_mem=16MB
+      -c maintenance_work_mem=128MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
     environment:
       POSTGRES_USER: ${DB_USER:-sgm_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-sgm_password}
@@ -32,7 +43,7 @@ services:
       - "${FRONTEND_PORT:-5175}:5173"
     environment:
       - DB_DSN=host=db user=${DB_USER:-sgm_user} password=${DB_PASSWORD:-sgm_password} dbname=${DB_NAME:-sgm_db} port=5432 sslmode=disable TimeZone=America/Sao_Paulo
-      - JWT_SECRET=${JWT_SECRET:-sgm_super_secreto_2026}
+      - JWT_SECRET=${JWT_SECRET:-seu_jwt_secret_super_seguro_aqui}
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-COLOQUE_SUA_API_KEY_AQUI}
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASS=${SMTP_PASS:-}

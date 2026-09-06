@@ -7,6 +7,7 @@ import (
 	"workspace/backend/routes"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 )
@@ -20,7 +21,10 @@ func main() {
 		BodyLimit: 20 * 1024 * 1024,
 	})
 
-	// 3. Middlewares globais (Logs no terminal e permissão de CORS)
+	// 3. Middlewares globais (Compressão de banda, Logs e CORS)
+	app.Use(compress.New(compress.Config{
+		Level: compress.LevelBestSpeed,
+	}))
 	app.Use(logger.New(logger.Config{
 		Format: "[${time}] ${status} - ${method} ${path} | ${latency}\n",
 	}))

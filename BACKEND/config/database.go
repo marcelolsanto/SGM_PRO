@@ -37,8 +37,8 @@ func ConectarBanco() {
 	DB = database
 	sqlDB, errDB := DB.DB()
 	if errDB == nil {
-		sqlDB.SetMaxOpenConns(150)
-		sqlDB.SetMaxIdleConns(50)
+		sqlDB.SetMaxOpenConns(400)
+		sqlDB.SetMaxIdleConns(100)
 		sqlDB.SetConnMaxLifetime(time.Hour)
 	}
 	log.Println("✅ Banco de dados PostgreSQL conectado com sucesso!")
