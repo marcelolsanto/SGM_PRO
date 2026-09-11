@@ -34,7 +34,8 @@ jobs:
 
           echo "🐳 Atualizando e subindo containers Docker..."
           docker compose up -d db
-          docker compose up -d --build --force-recreate app
+          docker rm -f sgm_app 2>/dev/null || true
+          BACKEND_PORT=8085 FRONTEND_PORT=5175 DB_PORT_EXTERNAL=5434 docker compose up -d --build app
 
           echo "⏳ Aguardando estabilização dos serviços..."
           sleep 10
