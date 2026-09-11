@@ -9,6 +9,8 @@ import Login from './views/Login'
 import PortalUsuario from './views/PortalUsuario'
 import ResetarSenha from './views/ResetarSenha'
 import TermosModal from './components/TermosModal'
+import LandingPage from './views/LandingPage'
+import TorreControle from './views/TorreControle'
 
 const parseJwt = (t) => {
   if (!t || typeof t !== 'string') return null
@@ -69,6 +71,10 @@ function App() {
   const [usuario, setUsuario] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('sgm_usuario') || '' : ''))
   const [menuAberto, setMenuAberto] = useState(false)
   const [termosAberto, setTermosAberto] = useState(false)
+  const [telaPublica, setTelaPublica] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.pathname === '/login') return 'login'
+    return 'landing'
+  })
 
   const tokenData = token ? parseJwt(token) : null
   const perfil = tokenData?.perfil || ''
@@ -82,6 +88,7 @@ function App() {
     delete axios.defaults.headers.common['Authorization']
     setToken(null)
     setUsuario('')
+    setTelaPublica('landing')
   }
 
   useEffect(() => {
@@ -120,19 +127,31 @@ function App() {
   
   const resetMatch = window.location.pathname.match(/^\/resetar-senha\/([^/?#]+)/)
   if (resetMatch) return <ResetarSenha token={resetMatch[1]} />
-  if (!token || !perfil) return <Login setToken={setToken} setUsuario={setUsuario} />
+
+  // Roteamento Público (Sem Login): Alterna entre Landing Page e Login
+  if (!token || !perfil) {
+    if (telaPublica === 'login') {
+      return <Login setToken={setToken} setUsuario={setUsuario} onVoltarLanding={() => setTelaPublica('landing')} />
+    }
+    return <LandingPage onIrParaLogin={() => setTelaPublica('login')} />
+  }
 
   const menuAdmin = [
     { id: 'dashboard', icon: '📊', label: 'Visão Geral (BI)' },
+    { id: 'campo', icon: '🗺️', label: 'Torre de Controle (Campo)' },
     { id: 'operacoes', icon: '🛠️', label: 'Gestão de Operações' },
     { id: 'financeiro', icon: '🏦', label: 'Financeiro & Contábil' },
-    { id: 'admin', icon: '⚙️', label: 'Cadastros Base' }
+    { id: 'admin', icon: '⚙️', label: 'Cadastros Base' },
+    { id: 'institucional', icon: '🌐', label: 'Site Institucional' }
   ]
   
   const menuLoja = [
     { id: 'dashboard', icon: '📊', label: 'Meus Resultados' },
+    { id: 'campo', icon: '🗺️', label: 'Torre de Controle (Campo)' },
     { id: 'operacoes', icon: '📋', label: 'Minhas Medições' },
-    { id: 'admin', icon: '⚙️', label: 'Meus Cadastros' }
+    { id: 'financeiro', icon: '🏦', label: 'Financeiro & Contábil' },
+    { id: 'admin', icon: '⚙️', label: 'Meus Cadastros' },
+    { id: 'institucional', icon: '🌐', label: 'Site Institucional' }
   ]
   
   const menuAtual = perfil === 'ADMIN' ? menuAdmin : (perfil === 'LOJA' ? menuLoja : [])
@@ -145,7 +164,17 @@ function App() {
         <div className="flex items-center gap-2">
           <button onClick={() => setTermosAberto(true)} className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded-lg font-bold border border-slate-700">⚖️ Termos</button>
           {perfil !== 'MEDIDOR' && <button onClick={() => setMenuAberto(!menuAberto)} className="text-2xl text-slate-400">☰</button>}
-          {perfil === 'MEDIDOR' && <button onClick={fazerLogout} className="text-xs bg-red-500/10 text-red-400 px-3 py-1.5 rounded-lg font-bold">Sair</button>}
+          {perfil === 'MEDIDOR' && (
+            <div className="flex items-center gap-2">
+              <button onClick={() => setAbaAtiva(abaAtiva === 'campo' ? 'operacoes' : 'campo')} className="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1">
+                {abaAtiva === 'campo' ? '🛵 Minha Rota' : '🗺️ Torre de Controle'}
+              </button>
+              <button onClick={() => setAbaAtiva(abaAtiva === 'institucional' ? 'operacoes' : 'institucional')} className="text-xs bg-blue-600/20 text-blue-400 px-3 py-1.5 rounded-lg font-bold">
+                {abaAtiva === 'institucional' ? 'Minhas OSs' : '🌐 Planos'}
+              </button>
+              <button onClick={fazerLogout} className="text-xs bg-red-500/10 text-red-400 px-3 py-1.5 rounded-lg font-bold">Sair</button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -158,14 +187,14 @@ function App() {
 
           <nav className="flex-1 space-y-2">
             {menuAtual.map(item => (
-              <button key={item.id} onClick={() => { setAbaAtiva(item.id); setMenuAberto(false) }} className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl transition-all ${abaAtiva === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+              <button key={item.id} onClick={() => { setAbaAtiva(item.id); setMenuAberto(false) }} className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl transition-all ${abaAtiva === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 cursor-pointer'}`}>
                 <span className="text-xl">{item.icon}</span> <span className="text-sm">{item.label}</span>
               </button>
             ))}
 
             <button 
               onClick={() => { setTermosAberto(true); setMenuAberto(false); }}
-              className="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-all text-left"
+              className="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-all text-left cursor-pointer"
             >
               <span className="text-xl">⚖️</span> <span className="text-sm font-medium">Termos & Garantias</span>
             </button>
@@ -181,13 +210,16 @@ function App() {
                 <p className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">{perfil}</p>
               </div>
             </div>
-            <button onClick={fazerLogout} className="w-full mt-4 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white py-2.5 rounded-xl text-xs font-bold transition-colors">Sair do Sistema</button>
+            <button onClick={fazerLogout} className="w-full mt-4 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer">Sair do Sistema</button>
           </div>
         </aside>
       )}
 
       <main className="flex-1 p-4 md:p-10 overflow-y-auto mt-[69px] md:mt-0 h-[calc(100vh-69px)] md:h-screen custom-scrollbar relative">
         <div className="max-w-7xl mx-auto pb-20 md:pb-0 h-full">
+          {abaAtiva === 'institucional' && <LandingPage onIrParaLogin={() => setAbaAtiva('dashboard')} />}
+          {abaAtiva === 'campo' && <TorreControle perfil={perfil} setToken={setToken} />}
+
           {perfil === 'ADMIN' && abaAtiva === 'dashboard' && <Dashboard perfil={perfil} />}
           {perfil === 'ADMIN' && abaAtiva === 'operacoes' && <Operacoes />}
           {perfil === 'ADMIN' && abaAtiva === 'financeiro' && <PainelFinanceiro perfil={perfil} onVoltar={() => setAbaAtiva('dashboard')} />}
@@ -198,7 +230,7 @@ function App() {
           {perfil === 'LOJA' && abaAtiva === 'financeiro' && <PainelFinanceiro perfil={perfil} onVoltar={() => setAbaAtiva('operacoes')} />}
           {perfil === 'LOJA' && abaAtiva === 'admin' && <Admin perfil={perfil} refId={refId} />}
 
-          {perfil === 'MEDIDOR' && <PortalUsuario perfil={perfil} refId={refId} setToken={setToken} />}
+          {perfil === 'MEDIDOR' && abaAtiva !== 'institucional' && abaAtiva !== 'campo' && <PortalUsuario perfil={perfil} refId={refId} setToken={setToken} />}
         </div>
       </main>
 
